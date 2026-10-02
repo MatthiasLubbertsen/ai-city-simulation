@@ -1,0 +1,16 @@
+services:
+  city:
+    build: .
+    container_name: ai-city
+    restart: unless-stopped
+    ports:
+      - "1723:1723"   # API + WebSocket + frontend
+      - "1724:1724"   # zelfde app; browsers blokkeren poort 1723, open dus http://localhost:1724
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - city-data:/data   # SQLite: elk event, elke beweging, geheugen, besluiten, snapshots
+
+volumes:
+  city-data:

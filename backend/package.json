@@ -1,0 +1,17 @@
+{
+  "name": "ai-city-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.0.0",
+    "better-sqlite3": "^11.5.0",
+    "fastify": "^5.0.0",
+    "ws": "^8.18.0"
+  }
+}
