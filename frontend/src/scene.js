@@ -294,6 +294,13 @@ export class CityScene {
     return { id: c.id, g, body, bodyMat, legL, legR, armL, armR, sick, ring, from: null, to: null, t0: 0, x: 0, z: 0, h: 0, mode: 0, flags: 0, phase: r() * 6, name: c.name, init: false };
   }
 
+  clearCitizens() {
+    for (const o of this.citizens.values()) this.scene.remove(o.g);
+    this.citizens.clear(); this.selected = null; this.hovered = null;
+    for (const el of this.nameLabels?.values() || []) el.remove();
+    this.nameLabels?.clear();
+  }
+
   setCitizens(list) {
     for (const c of list) if (!this.citizens.has(c.id)) this.citizens.set(c.id, this.makeCitizen(c));
   }

@@ -278,6 +278,11 @@ export class Mind {
     else if (w === 'more_medics') { const m = Math.min(2, Math.max(0, t.maker - minMakers)); t.maker -= m; t.medic += m; }
     t.medic = clamp(t.medic, 2, Math.ceil(n * 0.2));
     t.farmer = Math.max(1, n - t.maker - t.medic);
+    // Safety rails: Jev classifies, but nobody may be starved by a bad classification.
+    // Keep enough farmers for the current harvest, and never move farmers away while food is low.
+    const minFarmers = Math.min(Math.ceil(n * 0.7), Math.ceil((n * 0.35) / Math.min(1, s.harvestFactor)));
+    const guardFarmers = Math.max(minFarmers, s.foodDays < 4 ? s.jobs.farmer + (s.foodDays < 2.5 ? 3 : 0) : 0);
+    if (t.farmer < guardFarmers) { t.farmer = Math.min(n - t.medic - 1, guardFarmers); t.maker = Math.max(1, n - t.farmer - t.medic); }
 
     const cap = { strict: 1.0, moderate: 1.1, generous: 1.2 }[a.ration_cap?.choice] ?? 1.1;
     const demand = s.unmetDemand.map(([id]) => ({ item: id, qty: 1 }));

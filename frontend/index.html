@@ -16,6 +16,7 @@
     <div class="kpis" id="kpis"></div>
     <div class="top-actions">
       <button id="btn-left" class="icon" title="Government & statistics">🏛️</button>
+      <button id="btn-report" class="icon" title="Post-mortem report">📜</button>
       <button id="btn-orbit" class="icon" title="Auto-rotate">🎥</button>
       <button id="btn-reset" class="icon" title="Reset camera">🧭</button>
       <button id="btn-right" class="icon" title="Citizens">👥</button>
@@ -69,6 +70,18 @@
     </div>
     <div id="feed"></div>
   </footer>
+
+  <div id="extinct-banner" hidden></div>
+  <div id="report-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="report-title">📜 City report</h2><button class="x" id="report-close">✕</button></div>
+      <div id="report-body"><p class="muted">Loading…</p></div>
+      <div class="modal-foot">
+        <button class="btn" id="report-refresh">🔄 Regenerate</button>
+        <button class="btn danger" id="report-reset">♻️ Reset city</button>
+      </div>
+    </div>
+  </div>
 
   <div id="loading"><div class="spinner"></div><p>Connecting to the city…</p></div>
   <script type="module" src="/src/main.js"></script>

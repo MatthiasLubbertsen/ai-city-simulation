@@ -8,10 +8,12 @@ import { cfg } from './config.js';
 import { openStore } from './db.js';
 import { Jev } from './jev.js';
 import { Sim } from './sim.js';
+import { getReport } from './report.js';
+import crypto from 'node:crypto';
 
 const store = openStore(cfg.dataDir);
 const llm = new Jev(cfg, store);
-const sim = new Sim({ cfg, store, llm });
+let sim = new Sim({ cfg, store, llm });
 sim.init();
 
 const app = Fastify({ logger: false });
@@ -49,6 +51,43 @@ app.get('/api/positions', async (req) => { store.flush(); return store.db.prepar
 app.get('/api/stats/history', async () => sim.history);
 app.get('/api/llm', async () => ({ ...llm.status(), calls: (store.flush(), store.db.prepare('SELECT ts,purpose,ok,prompt_tokens,completion_tokens,ms,cost,error FROM llm_calls ORDER BY id DESC LIMIT 50').all()) }));
 
+// ---- post-mortem report ------------------------------------------------------
+// GET returns the cached report (generating it once if there is none); POST asks for a refresh (still cached for REPORT_MIN_INTERVAL_SECONDS).
+app.get('/api/report', async () => getReport(sim, store, cfg, llm.c.apiKey));
+app.post('/api/report/refresh', async () => getReport(sim, store, cfg, llm.c.apiKey, { force: true }));
+
+// ---- admin: reset the city -----------------------------------------------------
+// POST /api/admin/reset   header: x-admin-token: <ADMIN_TOKEN>   body (optional): {"seed":123,"population":40}
+// The current database is archived to <DATA_DIR>/archive/ first, so no history is lost.
+let resetting = false, autoPending = false;
+async function resetCity({ seed, population } = {}) {
+  if (resetting) throw new Error('reset already in progress');
+  resetting = true;
+  try {
+    const archived = store.archive();
+    store.clearAll();
+    if (Number.isFinite(population)) cfg.population = Math.max(5, Math.min(120, Math.round(population)));
+    cfg.seed = Number.isFinite(seed) ? seed : Math.floor(Math.random() * 1e9);
+    sim = new Sim({ cfg, store, llm });
+    sim.init();
+    sim.emitter = emitter;
+    for (const ws of wss.clients) send(ws, sim.hello()); // clients rebuild their view
+    console.log(`[server] city reset (seed ${cfg.seed}); old run archived at ${archived}`);
+    return { archived, seed: cfg.seed, population: cfg.population };
+  } finally { resetting = false; }
+}
+const tokenOk = (given) => {
+  const a = Buffer.from(String(given || '')), b = Buffer.from(cfg.adminToken);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+app.post('/api/admin/reset', async (req, rep) => {
+  if (!cfg.adminToken) return rep.code(403).send({ error: 'Reset is disabled: set ADMIN_TOKEN in the environment.' });
+  if (!tokenOk(req.headers['x-admin-token'])) return rep.code(401).send({ error: 'Invalid admin token.' });
+  const b = req.body || {};
+  try { return await resetCity({ seed: b.seed != null ? Number(b.seed) : undefined, population: b.population != null ? Number(b.population) : undefined }); }
+  catch (e) { return rep.code(409).send({ error: e.message }); }
+});
+
 const pub = path.resolve(cfg.publicDir);
 if (fs.existsSync(pub)) await app.register(fastifyStatic, { root: pub });
 else app.get('/', async () => 'Frontend not built (see frontend/).');
@@ -81,7 +120,13 @@ wss.on('connection', (ws) => {
     } catch { /* ignore */ }
   });
 });
-sim.emitter = (kind, payload) => broadcast({ type: kind, data: payload });
+// When the last citizen dies, write the post-mortem right away and push it to all viewers.
+const emitter = (kind, payload) => {
+  broadcast({ type: kind, data: payload });
+  if (kind === 'extinct') getReport(sim, store, cfg, llm.c.apiKey).then((r) => broadcast({ type: 'report', data: r })).catch((e) => console.error('report failed', e.message));
+};
+sim.emitter = emitter;
+if (sim.extinct) getReport(sim, store, cfg, llm.c.apiKey).catch(() => {});
 
 // ---- the simulation always keeps running, even without viewers --------------------
 let last = performance.now(), acc = 0, bc = 0, slow = 0;
@@ -95,6 +140,11 @@ setInterval(() => {
     if (sim.liveEvents.length) { if (wss.clients.size) broadcast({ type: 'events', data: sim.liveEvents }); sim.liveEvents = []; }
   }
   if (slow % 20 === 0 && wss.clients.size) broadcast({ type: 'state', data: sim.liveState() });
+  // After an extinction: keep the report on screen for a while, then start a new city automatically.
+  if (slow % 10 === 0 && sim.extinct && cfg.autoRestartSeconds > 0 && !resetting && !autoPending && Date.now() - sim.extinct.realAt > cfg.autoRestartSeconds * 1000) {
+    autoPending = true;
+    getReport(sim, store, cfg, llm.c.apiKey).catch(() => {}).finally(() => resetCity().catch((e) => console.error('auto reset failed', e.message)).finally(() => { autoPending = false; }));
+  }
 }, 50);
 
 const shutdown = () => { console.log('[server] shutting down, saving snapshot...'); sim.save(); store.close(); process.exit(0); };

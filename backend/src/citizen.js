@@ -130,7 +130,11 @@ function vitals(sim, c, dtMin) {
 function die(sim, c) {
   c.dead = true; c.path = null; c.task = null; c.inside = false;
   const cause = c.hunger > 85 ? 'hunger' : c.sick ? `illness (${c.sick.name})` : 'exhaustion';
-  sim.log('death', `${c.name} has died of ${cause}.`, c.id, { cause, hunger: c.hunger });
+  sim.log('death', `${c.name} has died of ${cause}.`, c.id, {
+    cause, hunger: Math.round(c.hunger), energy: Math.round(c.energy), job: c.job, sick: c.sick?.name || null,
+    depotFood: Math.round(sim.gov.depot.food), foodDays: +sim.gov.foodDays.toFixed(2), medicine: +sim.gov.depot.medicine.toFixed(1),
+    aliveBefore: sim.citizens.filter((x) => !x.dead).length + 1,
+  });
   for (const o of sim.citizens) if (!o.dead && o.traits.sociability > 0.5) sim.remember(o, 'death', `${c.name} has died of ${cause}.`, 0.9);
   if (c.apt) sim.health.cancel(c);
 }
@@ -199,7 +203,14 @@ const endTask = (c) => { c.task = null; c.inside = false; };
 function claimRation(sim, c) {
   c.lastRationAt = sim.minutes;
   const r = sim.gov.issueRation(c);
-  if (r.kcal <= 1) { c.task = null; return; }
+  if (r.kcal <= 1) {
+    // Only log a denial when the depot really is (nearly) empty, and not more than once per 2 simulated hours per citizen.
+    if (sim.gov.depot.food < 50 && sim.minutes - (c.lastDeniedLog ?? -1e9) > 120) {
+      c.lastDeniedLog = sim.minutes;
+      sim.log('ration_denied', `${c.name} queued for food but the depot is empty (hunger ${Math.round(c.hunger)}).`, c.id, { hunger: Math.round(c.hunger) });
+    }
+    c.task = null; return;
+  }
   c.task = { kind: 'eat', phase: 'do', kcal: r.kcal, left: r.kcal, dur: Math.max(10, Math.min(40, r.kcal / 40)), started: sim.minutes, bid: c.loc };
 }
 

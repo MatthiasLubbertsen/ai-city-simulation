@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS tr_cid ON trades(cid, id);
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, ts INTEGER, purpose TEXT, model TEXT, ok INTEGER, prompt_tokens INTEGER, completion_tokens INTEGER, ms INTEGER, cost REAL, error TEXT);
 CREATE TABLE IF NOT EXISTS stats(tick INTEGER, minute INTEGER, data TEXT);
+CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY, ts INTEGER, minute INTEGER, kind TEXT, facts TEXT, narrative TEXT, model TEXT, source TEXT);
 CREATE TABLE IF NOT EXISTS snapshot(id INTEGER PRIMARY KEY CHECK (id = 1), tick INTEGER, data TEXT);
 `;
 
@@ -66,6 +67,20 @@ export function openStore(dir) {
     stats: (...a) => q(() => st.stats.run(...a)),
     saveSnapshot: (tick, obj) => { flushNow(); st.snap.run(tick, JSON.stringify(obj)); },
     loadSnapshot: () => { const r = db.prepare('SELECT data FROM snapshot WHERE id=1').get(); return r ? JSON.parse(r.data) : null; },
+    // Archive the whole database (VACUUM INTO makes a consistent copy), then wipe it for a fresh run.
+    archive: () => {
+      flushNow();
+      const dest = path.join(dir, 'archive', `city-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+      return dest;
+    },
+    clearAll: () => {
+      queue = [];
+      db.transaction(() => { for (const t of ['events', 'positions', 'moves', 'memories', 'decisions', 'trades', 'llm_calls', 'stats', 'reports', 'snapshot']) db.exec(`DELETE FROM ${t}`); })();
+    },
+    saveReport: (minute, kind, facts, narrative, model, source) => db.prepare('INSERT INTO reports(ts,minute,kind,facts,narrative,model,source) VALUES(?,?,?,?,?,?,?)').run(Date.now(), minute, kind, JSON.stringify(facts), narrative, model, source),
+    latestReport: () => { const r = db.prepare('SELECT * FROM reports ORDER BY id DESC LIMIT 1').get(); return r ? { ...r, facts: JSON.parse(r.facts) } : null; },
     flush: flushNow,
     close: () => { flushNow(); db.close(); },
   };

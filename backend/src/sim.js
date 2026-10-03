@@ -19,6 +19,7 @@ export class Sim {
     this.citizens = [];
     this.byId = new Map();
     this.history = [];
+    this.extinct = null; // set when the last citizen dies: { minute, day, realAt }
     this.liveEvents = [];
     this.recent = [];
     this.nextEventId = 1;
@@ -92,14 +93,14 @@ export class Sim {
 
   serialize() {
     return {
-      v: 1, tick: this.tick, minutes: this.minutes, rng: this.rng.getState(), nextEventId: this.nextEventId, lastDay: this.lastDay,
+      v: 1, extinct: this.extinct, tick: this.tick, minutes: this.minutes, rng: this.rng.getState(), nextEventId: this.nextEventId, lastDay: this.lastDay,
       citizens: this.citizens.map((c) => ({ ...c, apt: c.apt?.id ?? null, thinking: false })),
       gov: this.gov.toJSON(), health: this.health.toJSON(), history: this.history.slice(-400),
     };
   }
 
   restore(o) {
-    this.tick = o.tick; this.minutes = o.minutes; this.rng.setState(o.rng); this.nextEventId = o.nextEventId; this.lastDay = o.lastDay;
+    this.extinct = o.extinct || null; this.tick = o.tick; this.minutes = o.minutes; this.rng.setState(o.rng); this.nextEventId = o.nextEventId; this.lastDay = o.lastDay;
     this.gov.load(o.gov); this.health.load(o.health); this.history = o.history || [];
     this.citizens = o.citizens;
     for (const c of this.citizens) { this.byId.set(c.id, c); c.apt = c.apt != null ? this.health.apts.find((a) => a.id === c.apt) || null : null; }
@@ -107,6 +108,7 @@ export class Sim {
 
   // ---- main loop --------------------------------------------------------------
   step() {
+    if (this.extinct) return; // the city has fallen: the world is frozen until it is reset
     const dtReal = 1 / this.cfg.tickHz, dtMin = dtReal * this.minPerSec;
     this.tick++;
     this.minutes += dtMin;
@@ -121,6 +123,12 @@ export class Sim {
     this.gov.update(dtMin);
     this.health.update(dtReal, dtMin);
     this.mind.update();
+    if (!this.citizens.some((c) => !c.dead)) {
+      this.extinct = { minute: this.minutes | 0, day: this.day(), realAt: Date.now() };
+      this.log('extinction', `Everyone has died. The city fell on day ${this.day()} at ${this.clockStr()}.`, null, { day: this.day() });
+      this.recordStats(); this.save(); this.emit('extinct', this.extinct);
+      return;
+    }
     if (this.minutes - this.lastStat >= 30) { this.lastStat = this.minutes; this.recordStats(); }
     const now = Date.now();
     if (now - this.lastPosLog >= this.cfg.posLogSeconds * 1000) {
@@ -134,7 +142,7 @@ export class Sim {
 
   recordStats() {
     const s = this.gov.stats();
-    const pt = { m: this.minutes | 0, day: s.day, food: s.foodKcal, foodDays: s.foodDays, hunger: s.avgHunger, starving: s.starving, hungry: s.hungry, sick: s.sick, gini: s.giniWeight, avgWeight: s.avgWeight, alive: s.population, medicine: s.medicine, energy: s.avgEnergy };
+    const pt = { m: this.minutes | 0, day: s.day, food: s.foodKcal, foodDays: s.foodDays, hunger: s.avgHunger, starving: s.starving, hungry: s.hungry, sick: s.sick, gini: s.giniWeight, avgWeight: s.avgWeight, alive: s.population, medicine: s.medicine, energy: s.avgEnergy, harvest: s.harvestFactor, farmers: s.jobs.farmer };
     this.history.push(pt);
     if (this.history.length > 600) this.history.shift();
     this.store.stats(this.tick, this.minutes | 0, JSON.stringify(pt));
@@ -186,6 +194,7 @@ export class Sim {
       llm: { ...this.llm.status(), mode: this.mind.mode() },
       clock: { minutes: this.minutes, day: this.day(), time: this.clockStr(), daySeconds: this.cfg.daySeconds },
       aptCount: this.health.apts.length,
+      extinct: this.extinct, autoRestartSeconds: this.cfg.autoRestartSeconds, autoRestartIn: this.extinct ? Math.max(0, this.cfg.autoRestartSeconds - (Date.now() - this.extinct.realAt) / 1000) : null, adminEnabled: !!this.cfg.adminToken,
     };
   }
 }

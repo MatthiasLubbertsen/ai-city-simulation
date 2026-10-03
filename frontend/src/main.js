@@ -62,6 +62,8 @@ function connect() {
     const m = JSON.parse(ev.data);
     switch (m.type) {
       case 'hello': onHello(m); break;
+      case 'extinct': S.live && (S.live.extinct = m.data); renderExtinct(); openReport(); break;
+      case 'report': S.report = m.data; if (!$('#report-modal').hidden) renderReport(); break;
       case 'frame': scene.applyFrame(m); S.minutes = m.m; scene.setTime(m.m); updateClock(); updateList(m.c); break;
       case 'events': pushEvents(m.data); break;
       case 'state': S.live = m.data; renderLive(); break;
@@ -76,9 +78,11 @@ function onHello(m) {
   S.history = m.history || []; S.decisions = m.decisions || [];
   S.citizens = new Map(m.citizens.map((c) => [c.id, { ...c, mode: 0, hunger: 0 }]));
   if (!built) { scene.buildWorld(m.world); built = true; }
-  scene.setCitizens(m.citizens);
+  scene.clearCitizens(); scene.select(null); scene.setCitizens(m.citizens);
+  S.report = null; $('#report-modal').hidden = true;
   S.live = m.state; feedEvents = m.recent || []; buildFilters(); rebuildFeed(); renderLive(); renderGov(); drawChart();
   $('#pop-count').textContent = m.citizens.length;
+  renderExtinct();
   $('#loading').classList.add('done');
 }
 
@@ -90,6 +94,7 @@ function updateClock() {
 }
 function renderLive() {
   const L = S.live; if (!L) return;
+  renderExtinct();
   const s = L.stats;
   const k = (label, val, cls = '') => `<div class="kpi ${cls}"><small>${label}</small><b>${val}</b></div>`;
   $('#kpis').innerHTML =
@@ -206,3 +211,54 @@ if (innerWidth < 900) { $('#left').classList.add('hide'); $('#right').classList.
 
 connect();
 window.__city = { scene, S };
+
+
+// ---- extinction banner, post-mortem report and reset ---------------------------------------
+function renderExtinct() {
+  const L = S.live, b = $('#extinct-banner');
+  if (!L?.extinct) { b.hidden = true; return; }
+  const left = L.autoRestartIn;
+  b.hidden = false;
+  b.innerHTML = `<b>☠️ Everyone has died — the city fell on day ${L.extinct.day}.</b>` +
+    (left != null && L.autoRestartSeconds > 0 ? `<span>New city in ${Math.ceil(left)}s</span>` : '') +
+    `<button class="btn" id="banner-report">Read the post-mortem</button><button class="btn danger" id="banner-reset">Reset now</button>`;
+  $('#banner-report').onclick = openReport; $('#banner-reset').onclick = resetCity;
+}
+
+const mdLite = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+function renderReport() {
+  const r = S.report, el = $('#report-body');
+  if (!r) { el.innerHTML = '<p class="muted">Analysing what happened…</p>'; return; }
+  const f = r.facts, causes = Object.entries(f.causes).map(([c, n]) => `<span class="chip">${esc(c)}: <b>${n}</b></span>`).join('');
+  $('#report-title').textContent = f.extinct ? '☠️ Post-mortem: why everyone died' : '📜 City report';
+  el.innerHTML =
+    `<div class="stat-grid"><span class="chip">Simulated days <b>${f.simulatedDays}</b></span><span class="chip">Started with <b>${f.startedWith}</b></span><span class="chip">Alive <b>${f.alive}</b></span><span class="chip">Dead <b>${f.dead}</b></span>${causes}</div>` +
+    `<div class="narrative">${mdLite(r.narrative)}<div class="muted" style="font-size:11px">${r.source === 'ai' ? `Written by ${esc(r.model)} via Hack Club AI` : 'Composed locally from the findings (no AI summary available)'} · facts computed from the full event log</div></div>` +
+    `<h4>Findings</h4><ul>${f.findings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
+    (f.timeline.length ? `<h4>Timeline</h4><ul>${f.timeline.map((x) => `<li><b>${esc(x.at)}</b> — ${esc(x.text)}</li>`).join('')}</ul>` : '') +
+    (f.government.reactionWhileFoodLow.length ? `<h4>Government reaction while food was low</h4><ul>${f.government.reactionWhileFoodLow.map((x) => `<li><b>${esc(x.at)}</b> (${esc(x.source)}): ${x.foodDays} days of food, ${x.farmers} farmers — ${esc(x.note || '')}</li>`).join('')}</ul>` : '');
+}
+async function openReport() {
+  $('#report-modal').hidden = false; $('#report-reset').hidden = !S.live?.adminEnabled;
+  renderReport();
+  try { S.report = await (await fetch('/api/report')).json(); } catch { /* keep placeholder */ }
+  renderReport();
+}
+async function refreshReport() {
+  $('#report-body').innerHTML = '<p class="muted">Regenerating…</p>';
+  try { S.report = await (await fetch('/api/report/refresh', { method: 'POST' })).json(); } catch { /* ignore */ }
+  renderReport();
+}
+async function resetCity() {
+  if (!S.live?.adminEnabled) { alert('Reset is disabled on this server. Set ADMIN_TOKEN to enable it (see README).'); return; }
+  let token = sessionStorage.getItem('adminToken') || prompt('Admin token:');
+  if (!token) return;
+  if (!confirm('Reset the city? The current run is archived on the server and a new city starts.')) return;
+  const res = await fetch('/api/admin/reset', { method: 'POST', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: '{}' });
+  if (res.ok) sessionStorage.setItem('adminToken', token); else { sessionStorage.removeItem('adminToken'); alert((await res.json()).error || 'Reset failed'); }
+}
+$('#btn-report').onclick = openReport;
+$('#report-close').onclick = () => { $('#report-modal').hidden = true; };
+$('#report-refresh').onclick = refreshReport;
+$('#report-reset').onclick = resetCity;
+$('#report-modal').addEventListener('click', (e) => { if (e.target.id === 'report-modal') $('#report-modal').hidden = true; });

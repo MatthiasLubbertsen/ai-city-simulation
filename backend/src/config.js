@@ -13,6 +13,15 @@ export const cfg = {
   broadcastHz: 5,
   posLogSeconds: num('POSITION_LOG_SECONDS', 10),
   snapshotSeconds: num('SNAPSHOT_SECONDS', 30),
+  adminToken: env.ADMIN_TOKEN || '',                          // required for POST /api/admin/reset (disabled when empty)
+  autoRestartSeconds: num('AUTO_RESTART_SECONDS', 300),       // after everyone died: show the report, then start a new city (0 = never)
+  // Hack Club AI chat completions: used ONLY for the post-mortem narrative (Jev can't write text)
+  report: {
+    baseUrl: env.HC_AI_BASE_URL || 'https://ai.hackclub.com/proxy/v1',
+    model: env.HC_CHAT_MODEL || 'qwen/qwen3-32b',
+    minIntervalSeconds: num('REPORT_MIN_INTERVAL_SECONDS', 600), // cache the narrative so public viewers can't burn budget
+    timeoutMs: num('REPORT_TIMEOUT_MS', 60000),
+  },
   // Jev: https://docs.ai.hackclub.com/api/jev.html (structured decisions instead of chat; billed per input token only)
   jev: {
     baseUrl: env.JEV_BASE_URL || 'https://ai.hackclub.com/proxy/v1/jev',

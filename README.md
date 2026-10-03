@@ -60,6 +60,7 @@ with probabilities and confidence, back in a few hundred milliseconds. That fits
   (portion size, what kind of item they want, mood);
 * the government sends aggregate statistics with seven questions (workforce, ration cap, crisis level, production focus,
   redistribute now?, rest orders?, announcement);
+* Jev only classifies, so the government wraps its answers in **safety rails** (enough farmers for the current harvest, no moving farmers away while food is low, emergency food drones stay rule-based) — a bad classification can't starve the city;
 * since Jev cannot write text, thoughts and announcements are composed locally from its answers (the log shows Jev's choices and confidence).
 
 Set `JEV_API_KEY` in `.env` (see `.env.example`). Base URL defaults to `https://ai.hackclub.com/proxy/v1/jev`, model to `jev-latest`.
@@ -78,11 +79,31 @@ Jev is billed per **input token only** and counts toward your Hack Club AI daily
 * With the defaults (40 citizens, 1 day = 6 min) that is roughly 130 citizen calls + 4 government calls per hour,
   on the order of 50k input tokens per hour. Visible live in the "Jev engine" panel and at `GET /api/llm`.
 
-## API (read-only)
+## Reset the city / what to do when everyone died
+
+* **Automatic:** when the last citizen dies the world freezes, a **post-mortem** is generated and shown to every viewer, and after
+  `AUTO_RESTART_SECONDS` (default 300; `0` = never) a fresh city starts by itself.
+* **Manually:** set `ADMIN_TOKEN` in `.env`, then click **Reset city** in the report window, or call
+  `curl -X POST http://localhost:1724/api/admin/reset -H "x-admin-token: $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"population":40}'`
+  (optional body: `seed`, `population`). Without `ADMIN_TOKEN` the endpoint is disabled, because the site is public.
+* The old run is never lost: its database is archived in `<data volume>/archive/city-<timestamp>.db`.
+* Hard wipe: `docker compose down -v` (deletes the data volume including archives).
+
+### Post-mortem report (📜 button, `GET /api/report`)
+
+1. **Forensics from the database:** causes of death, food/harvest timeline (when the depot ran low or empty, worst harvest, peak starvation),
+   how many citizens queued at an empty depot, how the government reacted while food was low (Jev vs. rules, farmer counts), medicine stock,
+   Jev call failures.
+2. **Narrative:** those facts go to the Hack Club AI chat-completions API ([docs](https://docs.ai.hackclub.com/api/chat-completions.html),
+   default model `qwen/qwen3-32b`, same API key as Jev) which writes a short root-cause analysis with suggestions.
+   Jev can't write text, so a chat model is used here. Without a key (or if the call fails) a local summary is composed from the same findings.
+   The result is cached (`REPORT_MIN_INTERVAL_SECONDS`) so public viewers can't burn through your budget.
+
+## API (read-only, plus the two report/admin POSTs)
 
 `GET /api/state` · `/api/citizens` · `/api/citizens/:id` (incl. memory, events, trades, trips) ·
 `/api/events?type=&actor=&before=&limit=` · `/api/decisions` · `/api/moves?citizen=` · `/api/positions?citizen=` ·
-`/api/stats/history` · `/api/llm` · `/api/health` — WebSocket at `/ws`.
+`/api/stats/history` · `/api/llm` · `/api/health` · `/api/report` · `POST /api/report/refresh` · `POST /api/admin/reset` (token) — WebSocket at `/ws`.
 
 ## Development
 
