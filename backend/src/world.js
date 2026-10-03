@@ -1,7 +1,7 @@
-// De stad: een raster van straten (2 cellen breed) en blokken (6x6 cellen). 1 cel = 2 meter in de 3D-weergave.
+// The city: a grid of streets (2 cells wide) and blocks (6x6 cells). 1 cell = 2 metres in the 3D view.
 export const CELL = 2;
-export const NB = 5;          // blokken per zijde
-export const PERIOD = 8;      // 2 straat + 6 blok
+export const NB = 5;          // blocks per side
+export const PERIOD = 8;      // 2 street + 6 block
 export const BLOCK = 6;
 export const SIZE = NB * PERIOD + 2;
 
@@ -14,8 +14,8 @@ const LAYOUT = [
 ];
 
 const NAMES = {
-  hospital: 'Ziekenhuis', farm: 'Kassen & akkers', workshop: 'Werkplaats', depot: 'Distributiecentrum',
-  gov: 'Stadhuis (AI-overheid)', park: 'Park', house: 'Woning',
+  hospital: 'Hospital', farm: 'Greenhouses & fields', workshop: 'Workshop', depot: 'Distribution centre',
+  gov: 'City hall (AI government)', park: 'Park', house: 'Home',
 };
 
 export function buildWorld() {
@@ -48,13 +48,13 @@ export function buildWorld() {
 export const isRoad = (w, x, z) => x >= 0 && z >= 0 && x < SIZE && z < SIZE && w.roads[z * SIZE + x] === 1;
 export const doorPoint = (b) => [b.door.x + 0.5, b.door.z + 0.5];
 
-// Punt "binnen" een gebouw waar iemand blijft staan.
+// A point "inside" a building where someone stays put.
 export function yardPoint(b, rng) {
   if (b.type === 'house') return [b.x + 1.5, b.z + 1.5];
   return [b.x + 0.8 + rng() * (b.w - 1.6), b.z + 0.8 + rng() * (b.d - 1.6)];
 }
 
-// BFS over straatcellen. Geeft lijst van [x,z] celmiddens.
+// BFS over road cells. Returns a list of [x,z] cell centres.
 export function roadPath(w, from, to) {
   const start = nearestRoad(w, from[0], from[1]);
   const goal = nearestRoad(w, to[0], to[1]);

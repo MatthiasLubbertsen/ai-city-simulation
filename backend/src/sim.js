@@ -15,7 +15,7 @@ export class Sim {
     this.rng = makeRng(cfg.seed);
     this.world = buildWorld();
     this.tick = 0;
-    this.minutes = 6 * 60; // we beginnen op dag 0, 06:00
+    this.minutes = 6 * 60; // we start on day 0, 06:00
     this.citizens = [];
     this.byId = new Map();
     this.history = [];
@@ -47,7 +47,7 @@ export class Sim {
   remember(c, kind, text, importance = 0.3) {
     const m = { t: this.minutes | 0, day: this.day(), kind, text, imp: importance };
     c.memory.push(m);
-    if (c.memory.length > 40) { // houd de belangrijkste en nieuwste in het werkgeheugen; de database bewaart alles
+    if (c.memory.length > 40) { // keep the most important and newest in working memory; the database keeps everything
       const idx = c.memory.reduce((best, x, i) => (x.imp < c.memory[best].imp && i < c.memory.length - 8 ? i : best), 0);
       c.memory.splice(idx, 1);
     }
@@ -58,7 +58,7 @@ export class Sim {
   init() {
     const snap = this.store.loadSnapshot();
     this.health.initDrones();
-    if (snap && snap.v === 1) { this.restore(snap); console.log(`[sim] hersteld: dag ${this.day()} ${this.clockStr()}, ${this.citizens.length} burgers`); return true; }
+    if (snap && snap.v === 1) { this.restore(snap); console.log(`[sim] restored: day ${this.day()} ${this.clockStr()}, ${this.citizens.length} citizens`); return true; }
     this.fresh();
     return false;
   }
@@ -73,20 +73,20 @@ export class Sim {
       const h = houses[i % houses.length];
       c.home = h.id; c.loc = h.id;
       [c.x, c.z] = [h.x + 1.5, h.z + 1.5];
-      c.nextThink = this.minutes + this.rng() * this.cfg.llm.thinkEveryDays * 1440;
+      c.nextThink = this.minutes + this.rng() * this.cfg.jev.thinkEveryDays * 1440;
       this.citizens.push(c); this.byId.set(c.id, c);
     }
-    // jobs door elkaar husselen zodat ze niet per huis geclusterd zijn
+    // shuffle jobs so they are not clustered per house
     for (let i = this.citizens.length - 1; i > 0; i--) { const j = Math.floor(this.rng() * (i + 1)); [this.citizens[i].job, this.citizens[j].job] = [this.citizens[j].job, this.citizens[i].job]; }
     const g = this.gov;
     g.depot.food = n * 2200 * 3;
     g.depot.medicine = 20;
     for (let i = 0; i < 18; i++) addItem(g.depot.items, this.rng.pick(ITEMS).id);
     g.policies.jobTargets = { farmer: n - medics - makers, maker: makers, medic: medics };
-    this.log('start', `De stad start met ${n} burgers. Iedereen heeft zijn bezit opgegeven; de overheid rekent het gemiddelde uit.`, null, { population: n });
-    for (const c of this.citizens) this.remember(c, 'start', `Ik woon in de stad en werk als ${c.job}.`, 0.4);
+    this.log('start', `The city starts with ${n} citizens. Everyone has declared their belongings; the government calculates the average.`, null, { population: n });
+    for (const c of this.citizens) this.remember(c, 'start', `I live in the city and work as a ${c.job}.`, 0.4);
     g.census();
-    g.rebalance('startverdeling');
+    g.rebalance('initial split');
     this.health.dailyRolls();
   }
 
@@ -105,7 +105,7 @@ export class Sim {
     for (const c of this.citizens) { this.byId.set(c.id, c); c.apt = c.apt != null ? this.health.apts.find((a) => a.id === c.apt) || null : null; }
   }
 
-  // ---- hoofdlus --------------------------------------------------------------
+  // ---- main loop --------------------------------------------------------------
   step() {
     const dtReal = 1 / this.cfg.tickHz, dtMin = dtReal * this.minPerSec;
     this.tick++;
@@ -113,7 +113,7 @@ export class Sim {
     const day = this.day();
     if (day !== this.lastDay) {
       this.lastDay = day;
-      this.log('new_day', `Dag ${day} begint.`, null, { day });
+      this.log('new_day', `Day ${day} begins.`, null, { day });
       this.gov.dailyEconomy();
       this.health.dailyRolls();
     }
@@ -130,7 +130,7 @@ export class Sim {
     if (now - this.lastSnap >= this.cfg.snapshotSeconds * 1000) { this.lastSnap = now; this.save(); }
   }
 
-  save() { try { this.store.saveSnapshot(this.tick, this.serialize()); } catch (e) { console.error('snapshot mislukt', e.message); } }
+  save() { try { this.store.saveSnapshot(this.tick, this.serialize()); } catch (e) { console.error('snapshot failed', e.message); } }
 
   recordStats() {
     const s = this.gov.stats();
@@ -141,7 +141,7 @@ export class Sim {
     this.emit('stat', pt);
   }
 
-  // ---- netwerk-weergaven ------------------------------------------------------
+  // ---- network views ------------------------------------------------------
   frame() {
     return {
       t: this.tick, m: Math.round(this.minutes * 10) / 10,

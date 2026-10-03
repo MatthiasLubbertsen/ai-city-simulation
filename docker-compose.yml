@@ -5,12 +5,12 @@ services:
     restart: unless-stopped
     ports:
       - "1723:1723"   # API + WebSocket + frontend
-      - "1724:1724"   # zelfde app; browsers blokkeren poort 1723, open dus http://localhost:1724
+      - "1724:1724"   # same app; browsers block port 1723, so open http://localhost:1724
     env_file:
       - path: .env
         required: false
     volumes:
-      - city-data:/data   # SQLite: elk event, elke beweging, geheugen, besluiten, snapshots
+      - city-data:/data   # SQLite: every event, move, memory, decision and snapshot
 
 volumes:
   city-data:

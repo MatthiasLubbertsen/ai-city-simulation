@@ -1,14 +1,14 @@
-// Zorg zonder spam: afspraak -> drone met testpakketje -> sample thuis -> lab -> medicijnen thuis of ziekenhuis.
-// Nep-klachten worden door het lab ontmaskerd (DNA-mismatch). Plus nood-voedseldrones.
+// Healthcare without spam: appointment -> drone with test kit -> sample at home -> lab -> medicine at home or hospital.
+// Fake complaints are exposed by the lab (DNA mismatch). Also emergency food drones.
 import { doorPoint } from './world.js';
 import { forceEat } from './citizen.js';
 
 export const DISEASES = [
-  { id: 'keelpijn', name: 'keelontsteking', sev: 1, symptom: 'een zere keel', sample: 'adem- en hoestsample', w: 0.55 },
-  { id: 'buikgriep', name: 'buikgriep', sev: 2, symptom: 'slechte ontlasting', sample: 'ontlastingsmonster', w: 0.3 },
-  { id: 'longontsteking', name: 'longontsteking', sev: 3, symptom: 'hoesten en koorts', sample: 'adem- en bloedsample', w: 0.15 },
+  { id: 'keelpijn', name: 'throat infection', sev: 1, symptom: 'a sore throat', sample: 'breath and cough sample', w: 0.55 },
+  { id: 'buikgriep', name: 'stomach flu', sev: 2, symptom: 'bad diarrhoea', sample: 'stool sample', w: 0.3 },
+  { id: 'longontsteking', name: 'pneumonia', sev: 3, symptom: 'coughing and fever', sample: 'breath and blood sample', w: 0.15 },
 ];
-const DRONE_SPEED = 7; // cellen per echte seconde
+const DRONE_SPEED = 7; // cells per real second
 
 export class Health {
   constructor(sim) {
@@ -30,7 +30,7 @@ export class Health {
   toJSON() { return { apts: this.apts, nextApt: this.nextApt, drones: this.drones, foodQueue: this.foodQueue }; }
   load(o) { Object.assign(this, o); }
 
-  // ---- ziekte ontstaat -----------------------------------------------------
+  // ---- illness arises -----------------------------------------------------
   dailyRolls() {
     const sim = this.sim;
     for (const c of sim.citizens) {
@@ -42,10 +42,10 @@ export class Health {
           for (const x of DISEASES) { if (r < x.w) { d = x; break; } r -= x.w; }
           c.sick = { id: d.id, name: d.name, sev: d.sev, symptom: d.symptom, since: sim.minutes, reported: false, reportAt: sim.minutes + sim.rng.int(30, 240), treated: false, hospital: false,
             recoverAt: d.sev === 1 && sim.rng() < 0.3 ? sim.minutes + sim.rng.int(36, 60) * 60 : null };
-          sim.log('sick', `${c.name} wordt ziek: ${d.name} (klacht: ${d.symptom}).`, c.id, { disease: d.id, sev: d.sev });
-          sim.remember(c, 'health', `Ik voel me ziek: ${d.symptom}.`, 0.6);
+          sim.log('sick', `${c.name} falls ill: ${d.name} (complaint: ${d.symptom}).`, c.id, { disease: d.id, sev: d.sev });
+          sim.remember(c, 'health', `I feel ill: ${d.symptom}.`, 0.6);
         } else if (c.traits.honesty < 0.25 && sim.rng() < 0.12) {
-          // fraudeur: doet alsof hij ziek is om een drone-pakketje en medicijnen te krijgen
+          // fraudster: pretends to be ill to get a drone test kit and medicine
           c.fakeAt = sim.minutes + sim.rng.int(30, 200);
         }
       }
@@ -55,7 +55,7 @@ export class Health {
   checkFakers() {
     const sim = this.sim;
     for (const c of sim.citizens) {
-      if (!c.dead && c.fakeAt && sim.minutes >= c.fakeAt) { c.fakeAt = null; if (!c.sick && !c.apt) this.book(c, 'een zere keel', true); }
+      if (!c.dead && c.fakeAt && sim.minutes >= c.fakeAt) { c.fakeAt = null; if (!c.sick && !c.apt) this.book(c, 'a sore throat', true); }
     }
   }
 
@@ -66,8 +66,8 @@ export class Health {
     const apt = { id: this.nextApt++, cid: c.id, symptom, fake, state: 'booked', t0: sim.minutes, droneId: null, labAt: 0, releaseAt: 0 };
     this.apts.push(apt);
     c.apt = apt;
-    sim.log('appointment', `${c.name} maakt een afspraak (klacht: ${symptom}). Er komt een drone met een testpakketje.`, c.id, { apt: apt.id, symptom });
-    sim.remember(c, 'health', `Ik maakte een afspraak voor ${symptom}. Een drone brengt een testpakketje.`, 0.5);
+    sim.log('appointment', `${c.name} books an appointment (complaint: ${symptom}). A drone will bring a test kit.`, c.id, { apt: apt.id, symptom });
+    sim.remember(c, 'health', `I booked an appointment for ${symptom}. A drone is bringing a test kit.`, 0.5);
   }
 
   cancel(c) { this.apts = this.apts.filter((a) => a.cid !== c.id); c.apt = null; for (const d of this.drones) if (d.job?.cid === c.id) { d.state = 'back'; d.job = null; } }
@@ -79,15 +79,15 @@ export class Health {
     const name = c.sick?.name;
     c.sick = null; c.inside = c.inside && c.task?.kind === 'sleep';
     if (c.apt) this.finish(c.apt, c);
-    sim.log('recover', `${c.name} is hersteld van ${name} (${how === 'hospital' ? 'ziekenhuis' : how === 'medicine' ? 'medicijnen' : 'vanzelf'}).`, c.id, { how });
-    sim.remember(c, 'health', `Ik ben weer beter van ${name}.`, 0.5);
+    sim.log('recover', `${c.name} has recovered from ${name} (${how === 'hospital' ? 'hospital' : how === 'medicine' ? 'medicine' : 'on their own'}).`, c.id, { how });
+    sim.remember(c, 'health', `I'm better again after ${name}.`, 0.5);
   }
 
-  // ---- stap ----------------------------------------------------------------
+  // ---- step ----------------------------------------------------------------
   update(dtReal, dtMin) {
     const sim = this.sim, gov = sim.gov, now = sim.minutes;
     this.checkFakers();
-    // Toewijzen
+    // Assign
     const idleMed = () => this.drones.find((d) => d.kind === 'med' && d.state === 'idle');
     for (const apt of this.apts) {
       const c = sim.byId.get(apt.cid);
@@ -95,27 +95,27 @@ export class Health {
       if (apt.state === 'booked') {
         const d = idleMed();
         if (d) { d.job = { kind: 'sample', cid: c.id, aptId: apt.id }; d.state = 'out'; d.timer = 0; d.wait = 0; apt.state = 'drone_out'; apt.droneId = d.id;
-          sim.log('drone_dispatch', `Drone #${d.id} vliegt met testpakketje naar ${c.name}.`, c.id, { drone: d.id, apt: apt.id }); }
+          sim.log('drone_dispatch', `Drone #${d.id} flies to ${c.name} with a test kit.`, c.id, { drone: d.id, apt: apt.id }); }
       } else if (apt.state === 'lab' && now >= apt.labAt) this.labResult(apt, c);
       else if (apt.state === 'medicine_wait' && gov.depot.medicine >= apt.need) {
         const d = idleMed();
         if (d) { gov.depot.medicine -= apt.need; d.job = { kind: 'medicine', cid: c.id, aptId: apt.id }; d.state = 'out'; d.timer = 0; apt.state = 'medicine_out';
-          sim.log('drone_dispatch', `Drone #${d.id} brengt medicijnen naar ${c.name}.`, c.id, { drone: d.id }); }
+          sim.log('drone_dispatch', `Drone #${d.id} is taking medicine to ${c.name}.`, c.id, { drone: d.id }); }
       } else if (apt.state === 'admit' && c.loc === sim.world.ofType('hospital')[0].id && c.task?.kind === 'hospital' && c.task.phase === 'do') {
         c.sick.hospital = true; c.sick.treated = true;
         const need = Math.min(apt.need, gov.depot.medicine); gov.depot.medicine -= need;
         apt.state = 'admitted'; apt.releaseAt = now + (c.sick.sev >= 3 ? 30 : 16) * 60;
-        sim.log('admitted', `${c.name} is opgenomen in het ziekenhuis (${c.sick.name}).`, c.id, { medicine: need });
+        sim.log('admitted', `${c.name} is admitted to hospital (${c.sick.name}).`, c.id, { medicine: need });
       } else if (apt.state === 'admitted' && now >= apt.releaseAt) { c.sick.hospital = false; this.recover(c, 'hospital'); }
     }
-    // Voedseldrones
+    // Food drones
     while (this.foodQueue.length) {
       const d = this.drones.find((x) => x.kind === 'supply' && x.state === 'idle');
       if (!d) break;
       const job = this.foodQueue.shift();
       d.job = { kind: 'food', cid: job.cid, kcal: job.kcal }; d.state = 'out'; d.timer = 0;
     }
-    // Bewegen
+    // Move
     for (const d of this.drones) this.stepDrone(d, dtReal, dtMin);
   }
 
@@ -137,7 +137,7 @@ export class Health {
     if (d.state === 'work') {
       if (job.kind === 'food') {
         c.foodDrone = false; forceEat(sim, c, job.kcal);
-        sim.log('subsidy_delivered', `Drone #${d.id} leverde ${Math.round(job.kcal)} kcal bij ${c.name}.`, c.id, { kcal: Math.round(job.kcal) });
+        sim.log('subsidy_delivered', `Drone #${d.id} delivered ${Math.round(job.kcal)} kcal to ${c.name}.`, c.id, { kcal: Math.round(job.kcal) });
         d.state = 'back'; return;
       }
       const apt = c.apt;
@@ -146,23 +146,23 @@ export class Health {
         d.timer += dtMin;
         if (d.timer >= 4) {
           if (c.sick) { c.sick.treated = true; c.sick.recoverAt = sim.minutes + (c.sick.sev === 1 ? 14 : 30) * 60; }
-          sim.log('medicine_delivered', `Drone #${d.id} leverde medicijnen thuis bij ${c.name}.`, c.id, { drone: d.id });
-          sim.remember(c, 'health', 'Een drone bracht medicijnen. Ik ga rusten.', 0.5);
+          sim.log('medicine_delivered', `Drone #${d.id} delivered medicine to ${c.name} at home.`, c.id, { drone: d.id });
+          sim.remember(c, 'health', "A drone brought medicine. I'm going to rest.", 0.5);
           this.finish(apt, c); d.state = 'back';
         }
         return;
       }
-      // sample afnemen: de burger moet thuis zijn
+      // taking the sample: the citizen must be home
       const present = c.loc === home.id && !c.path;
-      if (!present) { d.wait += dtMin; if (d.wait > 240) { sim.log('no_show', `${c.name} was niet thuis voor het testpakket; afspraak vervalt.`, c.id); this.finish(apt, c); d.state = 'back'; } return; }
+      if (!present) { d.wait += dtMin; if (d.wait > 240) { sim.log('no_show', `${c.name} was not home for the test kit; appointment cancelled.`, c.id); this.finish(apt, c); d.state = 'back'; } return; }
       if (apt.state !== 'sampling') {
         apt.state = 'sampling';
-        sim.log('sampling', `${c.name} ademt/hoest in het testpakket van drone #${d.id}${apt.fake ? '' : ''}.`, c.id, { symptom: apt.symptom });
+        sim.log('sampling', `${c.name} breathes/coughs into the test kit from drone #${d.id}${apt.fake ? '' : ''}.`, c.id, { symptom: apt.symptom });
       }
       d.timer += dtMin;
       if (d.timer >= 10) {
         apt.state = 'lab'; apt.labAt = sim.minutes + 90; d.state = 'back';
-        sim.log('sample_sent', `Sample van ${c.name} gaat naar het lab.`, c.id, {});
+        sim.log('sample_sent', `${c.name}'s sample is on its way to the lab.`, c.id, {});
       }
     }
   }
@@ -172,19 +172,19 @@ export class Health {
     const real = !!c.sick && !c.sick.treated;
     if (real) {
       apt.need = c.sick.sev === 1 ? 1 : 3;
-      sim.log('lab_positive', `Lab: ${c.name} heeft écht ${c.sick.name}. ${c.sick.sev === 1 ? 'Medicijnen thuis.' : 'Opname in het ziekenhuis.'}`, c.id, { disease: c.sick.id, sev: c.sick.sev });
+      sim.log('lab_positive', `Lab: ${c.name} really has ${c.sick.name}. ${c.sick.sev === 1 ? 'Medicine at home.' : 'Hospital admission.'}`, c.id, { disease: c.sick.id, sev: c.sick.sev });
       apt.state = c.sick.sev === 1 ? 'medicine_wait' : 'admit';
     } else if (apt.fake && sim.rng() < 0.9) {
       c.fraudStrikes++; gov.counters.fraud++;
-      sim.log('lab_fraud', `Lab: sample van ${c.name} klopt niet met de klacht (nep-sample, DNA-mismatch). Fraude geregistreerd (waarschuwing ${c.fraudStrikes}).`, c.id, { strikes: c.fraudStrikes });
-      sim.remember(c, 'fraud', 'Ik probeerde de zorg te foppen met een nep-sample en werd betrapt.', 0.9);
+      sim.log('lab_fraud', `Lab: ${c.name}'s sample does not match the complaint (fake sample, DNA mismatch). Fraud recorded (warning ${c.fraudStrikes}).`, c.id, { strikes: c.fraudStrikes });
+      sim.remember(c, 'fraud', 'I tried to fool healthcare with a fake sample and got caught.', 0.9);
       this.finish(apt, c);
     } else if (apt.fake) {
       apt.need = 1; apt.state = 'medicine_wait';
-      sim.log('lab_missed', `Lab: sample van ${c.name} lijkt positief (de fraude werd gemist).`, c.id, {});
+      sim.log('lab_missed', `Lab: ${c.name}'s sample looks positive (the fraud was missed).`, c.id, {});
     } else {
-      sim.log('lab_negative', `Lab: ${c.name} blijkt niet ziek te zijn. Geen medicijnen nodig.`, c.id, {});
-      sim.remember(c, 'health', 'Het lab zegt dat ik niets heb. Gelukkig.', 0.3);
+      sim.log('lab_negative', `Lab: ${c.name} turns out not to be ill. No medicine needed.`, c.id, {});
+      sim.remember(c, 'health', 'The lab says there is nothing wrong with me. Phew.', 0.3);
       this.finish(apt, c);
     }
   }

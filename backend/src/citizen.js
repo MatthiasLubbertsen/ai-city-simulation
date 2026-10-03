@@ -1,13 +1,13 @@
-// Eén burger = één agent. Een gratis "reflex-laag" (needs + dagritme) draait elke tick;
-// de LLM-laag (mind.js) beïnvloedt alleen voorkeuren: portiegrootte, wensen en wat je bereid bent in te leveren.
+// One citizen = one agent. A free "reflex layer" (needs + daily rhythm) runs every tick;
+// the LLM layer (mind.js) only influences preferences: portion size, wishes and what you are willing to hand in.
 import { ITEMS, ITEM_BY_ID, itemName, weightOf, fmtItems, addItem } from './items.js';
 import { roadPath, doorPoint, yardPoint } from './world.js';
 
 export const MODE = { IDLE: 0, WORK: 1, EAT: 2, STARVE: 3, SLEEP: 4, DEAD: 5 };
-export const HUNGER_PER_DAY = 66.7; // zoveel honger-punten bouwt een mens per dag op
-const FIRST = ['Sanne', 'Daan', 'Emma', 'Lars', 'Noor', 'Milan', 'Julia', 'Sem', 'Fleur', 'Bram', 'Lotte', 'Thijs', 'Anne', 'Ruben', 'Isa', 'Jesse', 'Eva', 'Niels', 'Femke', 'Tim', 'Maud', 'Koen', 'Lieke', 'Joost', 'Yara', 'Pepijn', 'Roos', 'Gijs', 'Mila', 'Dirk', 'Saar', 'Wout', 'Iris', 'Hugo', 'Zoë', 'Stijn', 'Nina', 'Olaf', 'Tess', 'Finn', 'Amira', 'Kasper', 'Lisa', 'Jorn', 'Ilse', 'Mees', 'Ayla', 'Cas', 'Vera', 'Rik'];
-const LAST = ['de Vries', 'Jansen', 'Bakker', 'Visser', 'Smit', 'Meijer', 'de Boer', 'Mulder', 'de Groot', 'Bos', 'Vos', 'Peters', 'Hendriks', 'van Dijk', 'Kok', 'Dekker', 'Brouwer', 'Maas', 'Verhoeven', 'Prins'];
-const JOB_NAMES = { farmer: 'Landbouwer', maker: 'Maker', medic: 'Zorgverlener' };
+export const HUNGER_PER_DAY = 66.7; // hunger points a person builds up per day
+const FIRST = ['Alex', 'Emma', 'Liam', 'Olivia', 'Noah', 'Ava', 'Ethan', 'Mia', 'Lucas', 'Chloe', 'Mason', 'Grace', 'Owen', 'Ella', 'Jack', 'Lily', 'Henry', 'Zoe', 'Leo', 'Ruby', 'Sam', 'Nora', 'Max', 'Hannah', 'Ben', 'Isla', 'Finn', 'Maya', 'Oscar', 'Alice', 'Eli', 'Iris', 'Hugo', 'Amy', 'Theo', 'Tess', 'Adam', 'Rose', 'Jake', 'Anna', 'Dan', 'Lisa', 'Kai', 'Nina', 'Cole', 'Ivy', 'Cas', 'Vera', 'Rick', 'Sarah'];
+const LAST = ['Smith', 'Jones', 'Taylor', 'Brown', 'Williams', 'Wilson', 'Johnson', 'Davies', 'Miller', 'Evans', 'Thomas', 'Roberts', 'Walker', 'Wright', 'Clarke', 'Hall', 'Green', 'Baker', 'Hughes', 'Carter'];
+const JOB_NAMES = { farmer: 'Farmer', maker: 'Maker', medic: 'Medic' };
 export const jobName = (j) => JOB_NAMES[j] || j;
 
 export function newCitizen(sim, id, job) {
@@ -20,13 +20,13 @@ export function newCitizen(sim, id, job) {
     job,
     home: null,
     traits: {
-      appetite: Math.round(r.range(1700, 2700) / 50) * 50, // kcal/dag (gemeten door de buiksensor)
+      appetite: Math.round(r.range(1700, 2700) / 50) * 50, // kcal/day (measured by the belly sensor)
       honesty,
       thrift: r.range(0.1, 1),
       sociability: r.range(0.1, 1),
       skill: r.range(0.8, 1.2),
     },
-    likes: Object.fromEntries(ITEMS.map((i) => [i.id, +r().toFixed(2)])), // gehechtheid per item
+    likes: Object.fromEntries(ITEMS.map((i) => [i.id, +r().toFixed(2)])), // attachment per item
     x: 0, z: 0, heading: 0, loc: null, inside: false,
     path: null, pi: 0, speed: r.range(1.7, 2.2),
     task: null, orders: [], wantReq: null,
@@ -38,7 +38,7 @@ export function newCitizen(sim, id, job) {
     thought: '', dead: false, stats: { eaten: 0, produced: 0, walked: 0, trades: 0 },
     memory: [],
   };
-  // Beginbezit: zeer ongelijk verdeeld (dat is precies waarom de overheid moet herverdelen)
+  // Starting possessions: very unevenly distributed (which is exactly why the government has to redistribute)
   const k = r() < 0.12 ? r.int(18, 34) : r.int(2, 11);
   for (let i = 0; i < k; i++) {
     const it = ITEMS[Math.min(ITEMS.length - 1, Math.floor(Math.pow(r(), 0.8) * ITEMS.length))];
@@ -47,7 +47,7 @@ export function newCitizen(sim, id, job) {
   return c;
 }
 
-// ---- hulpfuncties ---------------------------------------------------------
+// ---- helpers ---------------------------------------------------------
 export const declaredInv = (c) => {
   const d = {};
   for (const [id, n] of Object.entries(c.inv)) { const v = n - (c.hidden[id] || 0); if (v > 0) d[id] = v; }
@@ -63,14 +63,14 @@ export function modeOf(c) {
   return MODE.IDLE;
 }
 
-// Welke items geef je het liefst af? Lage gehechtheid en dubbele exemplaren eerst.
+// Which items would you rather give up? Low attachment and duplicates first.
 export function giveOrder(c, inv = declaredInv(c)) {
   const out = [];
   for (const [id, n] of Object.entries(inv)) for (let i = 0; i < n; i++) out.push({ id, score: c.likes[id] - 0.3 * i });
   return out.sort((a, b) => a.score - b.score).map((o) => o.id);
 }
 
-// Kies items om in te leveren met totaalgewicht >= need (zo min mogelijk overshoot).
+// Pick items to hand in with total weight >= need (as little overshoot as possible).
 export function pickGive(c, need, hint = []) {
   const inv = declaredInv(c);
   const chosen = [];
@@ -79,7 +79,7 @@ export function pickGive(c, need, hint = []) {
   for (const id of hint) { if (sum >= need) break; take(id); }
   for (const id of giveOrder(c, inv)) { if (sum >= need) break; take(id); }
   if (sum < need) return null;
-  // overbodige items weer weghalen
+  // drop surplus items again
   for (let i = chosen.length - 1; i >= 0; i--) {
     const w = ITEM_BY_ID[chosen[i]].weight;
     if (sum - w >= need) { sum -= w; chosen.splice(i, 1); }
@@ -89,7 +89,7 @@ export function pickGive(c, need, hint = []) {
 
 export const mealWindow = (h) => (h >= 7 && h < 9.5) || (h >= 12 && h < 14.5) || (h >= 18 && h < 20.5);
 
-// ---- hoofdstap ------------------------------------------------------------
+// ---- main step ------------------------------------------------------------
 export function stepCitizen(sim, c, dtReal, dtMin) {
   if (c.dead) return;
   vitals(sim, c, dtMin);
@@ -129,9 +129,9 @@ function vitals(sim, c, dtMin) {
 
 function die(sim, c) {
   c.dead = true; c.path = null; c.task = null; c.inside = false;
-  const cause = c.hunger > 85 ? 'honger' : c.sick ? `ziekte (${c.sick.name})` : 'uitputting';
-  sim.log('death', `${c.name} is overleden aan ${cause}.`, c.id, { cause, hunger: c.hunger });
-  for (const o of sim.citizens) if (!o.dead && o.traits.sociability > 0.5) sim.remember(o, 'death', `${c.name} is overleden aan ${cause}.`, 0.9);
+  const cause = c.hunger > 85 ? 'hunger' : c.sick ? `illness (${c.sick.name})` : 'exhaustion';
+  sim.log('death', `${c.name} has died of ${cause}.`, c.id, { cause, hunger: c.hunger });
+  for (const o of sim.citizens) if (!o.dead && o.traits.sociability > 0.5) sim.remember(o, 'death', `${c.name} has died of ${cause}.`, 0.9);
   if (c.apt) sim.health.cancel(c);
 }
 
@@ -147,7 +147,7 @@ function moveAlong(c, dt) {
   if (c.pi >= c.path.length) { c.path = null; c.pi = 0; }
 }
 
-// Route naar een gebouw; logt de beweging (inclusief afslagpunten) in de database.
+// Route to a building; logs the movement (including turning points) in the database.
 export function goTo(sim, c, b, purpose) {
   if (c.loc === b.id) return false;
   const w = sim.world;
@@ -156,7 +156,7 @@ export function goTo(sim, c, b, purpose) {
   if (c.loc != null) { const cb = w.byId[c.loc]; start = doorPoint(cb); pts.push(start); c.inside = false; }
   else start = [c.x, c.z];
   const cells = roadPath(w, start, doorPoint(b));
-  const ox = (c.id % 5 - 2) * 0.12, oz = (c.id % 3 - 1) * 0.15; // elk mensje loopt op een eigen "baan"
+  const ox = (c.id % 5 - 2) * 0.12, oz = (c.id % 3 - 1) * 0.15; // each person walks in their own "lane"
   for (const [x, z] of cells) pts.push([x + ox, z + oz]);
   pts.push(yardPoint(b, sim.rng));
   c.loc = null;
@@ -203,7 +203,7 @@ function claimRation(sim, c) {
   c.task = { kind: 'eat', phase: 'do', kcal: r.kcal, left: r.kcal, dur: Math.max(10, Math.min(40, r.kcal / 40)), started: sim.minutes, bid: c.loc };
 }
 
-// Een mens kan overal "voedselhulp" krijgen van een drone.
+// A person can get "food aid" from a drone anywhere.
 export function forceEat(sim, c, kcal) {
   c.path = null; c.inside = false;
   c.task = { kind: 'eat', phase: 'do', kcal, left: kcal, dur: 15, started: sim.minutes, bid: c.loc, subsidy: true };
@@ -222,8 +222,8 @@ function runTask(sim, c, dtMin) {
       c.hunger -= (part / c.traits.appetite) * HUNGER_PER_DAY;
       c.stats.eaten += part;
       if (t.left <= 0.5) {
-        sim.log('eat', `${c.name} heeft ${Math.round(t.kcal)} kcal opgegeten${t.subsidy ? ' (noodpakket)' : ''}.`, c.id, { kcal: Math.round(t.kcal), hunger: +c.hunger.toFixed(1) });
-        sim.remember(c, 'eat', `Ik at ${Math.round(t.kcal)} kcal${t.subsidy ? ' uit een noodpakket van een drone' : ''}. Honger nu ${Math.round(c.hunger)}.`, 0.2);
+        sim.log('eat', `${c.name} ate ${Math.round(t.kcal)} kcal${t.subsidy ? ' (emergency pack)' : ''}.`, c.id, { kcal: Math.round(t.kcal), hunger: +c.hunger.toFixed(1) });
+        sim.remember(c, 'eat', `I ate ${Math.round(t.kcal)} kcal${t.subsidy ? ' from an emergency pack from a drone' : ''}. Hunger is now ${Math.round(c.hunger)}.`, 0.2);
         endTask(c);
       }
       break;
@@ -232,11 +232,11 @@ function runTask(sim, c, dtMin) {
       const g = sim.gov;
       const out = g.produce(c, hrs);
       t.out += out; t.hrs += hrs;
-      c.energy -= 0; // energie wordt al in vitals() verbruikt
+      c.energy -= 0; // energy is already spent in vitals()
       if (sim.minutes >= t.until || c.energy < 12 || c.rest || needMeal || c.sick?.sev >= 2 || c.apt) {
         if (t.hrs > 0.2) {
-          const unit = c.job === 'farmer' ? `${Math.round(t.out)} kcal voedsel` : c.job === 'maker' ? `${t.out.toFixed(1)} arbeidsuren aan spullen` : `${t.out.toFixed(1)} medicijn-eenheden`;
-          sim.log('work', `${c.name} (${jobName(c.job)}) werkte ${t.hrs.toFixed(1)}u en leverde ${unit}.`, c.id, { job: c.job, hours: +t.hrs.toFixed(2), out: +t.out.toFixed(2) });
+          const unit = c.job === 'farmer' ? `${Math.round(t.out)} kcal of food` : c.job === 'maker' ? `${t.out.toFixed(1)} labour-hours of goods` : `${t.out.toFixed(1)} medicine units`;
+          sim.log('work', `${c.name} (${jobName(c.job)}) worked ${t.hrs.toFixed(1)}h and produced ${unit}.`, c.id, { job: c.job, hours: +t.hrs.toFixed(2), out: +t.out.toFixed(2) });
           c.stats.produced += t.out;
         }
         endTask(c);
@@ -244,7 +244,7 @@ function runTask(sim, c, dtMin) {
       break;
     }
     case 'sleep':
-      if (sim.minutes >= t.until || (c.energy >= 98 && sim.hour() >= 6 && sim.hour() < 12) || c.hunger >= 85) { if (sim.minutes - t.started > 120) sim.log('wake', `${c.name} is wakker.`, c.id); endTask(c); }
+      if (sim.minutes >= t.until || (c.energy >= 98 && sim.hour() >= 6 && sim.hour() < 12) || c.hunger >= 85) { if (sim.minutes - t.started > 120) sim.log('wake', `${c.name} is awake.`, c.id); endTask(c); }
       break;
     case 'rest':
       if (sim.minutes >= t.until) endTask(c);
@@ -253,7 +253,7 @@ function runTask(sim, c, dtMin) {
       if (sim.minutes >= t.until || needMeal) endTask(c);
       break;
     case 'await_drone':
-      // Wachten op de drone voor de sample / medicijnen. De health-module beëindigt dit.
+      // Waiting for the drone with the sample kit / medicine. The health module ends this.
       if (!c.apt || sim.minutes >= t.until) endTask(c);
       break;
     case 'sample':
@@ -276,7 +276,7 @@ function chooseTask(sim, c) {
   const home = world.byId[c.home];
   const now = sim.minutes;
 
-  // 1. Medische afspraak gaat voor
+  // 1. A medical appointment comes first
   if (c.apt) {
     if (c.apt.state === 'admit') { startTask(sim, c, { kind: 'hospital', bid: world.ofType('hospital')[0].id }); return; }
     if (['booked', 'drone_out', 'sampling', 'medicine_wait', 'medicine_out'].includes(c.apt.state)) {
@@ -284,24 +284,24 @@ function chooseTask(sim, c) {
       return;
     }
   }
-  // 2. Eten: sensor + maaltijdvensters
+  // 2. Eating: sensor + meal windows
   const canClaim = now - c.lastRationAt > 150 || c.hunger >= 70;
   if (canClaim && (c.hunger >= 55 || (mealWindow(hour) && c.hunger > 12))) {
     startTask(sim, c, { kind: 'ration', bid: depot.id });
     return;
   }
-  // 3. Slapen / uitgeput
+  // 3. Sleeping / exhausted
   if (hour >= 22 || hour < 6 || c.energy < 12) {
     const dayStart = Math.floor(now / 1440) * 1440;
     const wake = hour >= 6 && hour < 22 ? now + 300 : dayStart + (hour >= 22 ? 1440 : 0) + 6 * 60 + 1;
     startTask(sim, c, { kind: 'sleep', bid: home.id, until: wake });
     return;
   }
-  // 4. Ziek: thuis uitzieken
+  // 4. Ill: recover at home
   if (c.sick && c.sick.sev >= 2) { startTask(sim, c, { kind: 'rest', bid: home.id, until: now + 120 }); return; }
-  // 5. Bevolen rust
+  // 5. Ordered rest
   if (c.rest) { startTask(sim, c, { kind: 'rest', bid: home.id, until: now + 120 }); return; }
-  // 6. Werk (08:00 - 17:00)
+  // 6. Work (08:00 - 17:00)
   if (hour >= 8 && hour < 17 && c.job && c.energy > 25 && c.health > 35) {
     const bt = c.job === 'farmer' ? 'farm' : c.job === 'maker' ? 'workshop' : 'hospital';
     const options = world.ofType(bt);
@@ -309,12 +309,12 @@ function chooseTask(sim, c) {
     startTask(sim, c, { kind: 'work', bid: bld.id, until: Math.floor(now / 1440) * 1440 + 17 * 60 });
     return;
   }
-  // 7. Depot: herverdelingsorders en ruilwensen (avond)
+  // 7. Depot: redistribution orders and trade wishes (evening)
   if ((c.orders.length || c.wantReq) && hour >= 15.5 && hour < 22) {
     startTask(sim, c, { kind: 'depot_visit', bid: depot.id });
     return;
   }
-  // 8. Vrije tijd
+  // 8. Leisure
   const spots = [...world.ofType('park'), home, depot];
   const spot = r() < 0.55 ? world.ofType('park')[0] : r.pick(spots);
   startTask(sim, c, { kind: 'leisure', bid: spot.id, until: now + r.int(30, 90) });

@@ -6,24 +6,24 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { cfg } from './config.js';
 import { openStore } from './db.js';
-import { LLM } from './llm.js';
+import { Jev } from './jev.js';
 import { Sim } from './sim.js';
 
 const store = openStore(cfg.dataDir);
-const llm = new LLM(cfg, store);
+const llm = new Jev(cfg, store);
 const sim = new Sim({ cfg, store, llm });
 sim.init();
 
 const app = Fastify({ logger: false });
 
-// ---- REST (alleen lezen, publiek) ---------------------------------------------
+// ---- REST (read-only, public) ---------------------------------------------
 const lim = (v, d = 100, max = 1000) => Math.max(1, Math.min(max, Number(v) || d));
 app.get('/api/health', async () => ({ ok: true, tick: sim.tick, day: sim.day(), time: sim.clockStr(), llm: llm.status() }));
 app.get('/api/state', async () => sim.liveState());
 app.get('/api/citizens', async () => sim.citizens.map((c) => sim.detail(c)));
 app.get('/api/citizens/:id', async (req, rep) => {
   const c = sim.byId.get(Number(req.params.id));
-  if (!c) return rep.code(404).send({ error: 'onbekende burger' });
+  if (!c) return rep.code(404).send({ error: 'unknown citizen' });
   const id = c.id;
   const q = (sql, ...a) => store.db.prepare(sql).all(...a);
   return {
@@ -51,17 +51,17 @@ app.get('/api/llm', async () => ({ ...llm.status(), calls: (store.flush(), store
 
 const pub = path.resolve(cfg.publicDir);
 if (fs.existsSync(pub)) await app.register(fastifyStatic, { root: pub });
-else app.get('/', async () => 'Frontend niet gebouwd (zie frontend/).');
+else app.get('/', async () => 'Frontend not built (see frontend/).');
 
 await app.listen({ port: cfg.port, host: '0.0.0.0' });
-// Browsers (Chrome/Firefox) blokkeren poort 1723 als "onveilige poort" (PPTP). Daarom bedient dezelfde app ook poort 1724.
+// Browsers (Chrome/Firefox) block port 1723 as an "unsafe port" (PPTP). That is why the same app also serves port 1724.
 const servers = [app.server];
 if (cfg.webPort && cfg.webPort !== cfg.port) {
   const extra = http.createServer((req, res) => app.routing(req, res));
   await new Promise((ok) => extra.listen(cfg.webPort, '0.0.0.0', ok));
   servers.push(extra);
 }
-console.log(`[server] poort ${servers.length > 1 ? `${cfg.port} + ${cfg.webPort}` : cfg.port}  — LLM: ${llm.configured ? llm.c.model : 'niet ingesteld (regel-modus)'}`);
+console.log(`[server] port ${servers.length > 1 ? `${cfg.port} + ${cfg.webPort}` : cfg.port}  — Jev: ${llm.configured ? llm.c.model : 'no JEV_API_KEY (rules mode)'}`);
 
 // ---- WebSocket ---------------------------------------------------------------
 const wss = new WebSocketServer({ noServer: true, perMessageDeflate: { threshold: 512 } });
@@ -78,12 +78,12 @@ wss.on('connection', (ws) => {
     try {
       const m = JSON.parse(raw);
       if (m.type === 'citizen') { const c = sim.byId.get(Number(m.id)); if (c) send(ws, { type: 'citizen', data: sim.detail(c) }); }
-    } catch { /* negeren */ }
+    } catch { /* ignore */ }
   });
 });
 sim.emitter = (kind, payload) => broadcast({ type: kind, data: payload });
 
-// ---- de simulatie draait altijd door, ook zonder kijkers --------------------
+// ---- the simulation always keeps running, even without viewers --------------------
 let last = performance.now(), acc = 0, bc = 0, slow = 0;
 setInterval(() => {
   const now = performance.now();
@@ -97,5 +97,5 @@ setInterval(() => {
   if (slow % 20 === 0 && wss.clients.size) broadcast({ type: 'state', data: sim.liveState() });
 }, 50);
 
-const shutdown = () => { console.log('[server] afsluiten, snapshot opslaan...'); sim.save(); store.close(); process.exit(0); };
+const shutdown = () => { console.log('[server] shutting down, saving snapshot...'); sim.save(); store.close(); process.exit(0); };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

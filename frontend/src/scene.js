@@ -65,7 +65,7 @@ export class CityScene {
     requestAnimationFrame(this.animate);
   }
 
-  // ---- basis ----------------------------------------------------------------
+  // ---- basics ----------------------------------------------------------------
   mat(color, opts = {}) {
     const k = color + JSON.stringify(opts);
     if (!this.mats.has(k)) this.mats.set(k, new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.02, ...opts }));
@@ -116,7 +116,7 @@ export class CityScene {
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
 
-  // ---- wereld -----------------------------------------------------------------
+  // ---- world -----------------------------------------------------------------
   buildWorld(world) {
     this.world = world;
     const C = this.CELL, size = world.size * C;
@@ -125,25 +125,25 @@ export class CityScene {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), this.mat(0x5d7f4a, { roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(size / 2, -0.02, size / 2); ground.receiveShadow = true; root.add(ground);
 
-    // straten
+    // streets
     const road = this.mat(0x2a2e36, { roughness: 0.95 });
     for (let k = 0; k <= 5; k++) {
       const p = k * 8 * C;
       const h = new THREE.Mesh(new THREE.PlaneGeometry(size, 2 * C), road); h.rotation.x = -Math.PI / 2; h.position.set(size / 2, 0.02, p + C); h.receiveShadow = true; root.add(h);
       const v = new THREE.Mesh(new THREE.PlaneGeometry(2 * C, size), road); v.rotation.x = -Math.PI / 2; v.position.set(p + C, 0.021, size / 2); v.receiveShadow = true; root.add(v);
     }
-    // dashed lijnen (instanced)
+    // dashed lines (instanced)
     const dash = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.4, 0.12), new THREE.MeshBasicMaterial({ color: 0xe8e3c8 }), 600);
     let di = 0; const dm = new THREE.Matrix4(), rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), rotV = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2));
     for (let k = 0; k <= 5; k++) for (let t = 1; t < size - 1; t += 3) {
-      const m = (((t - C) % (8 * C)) + 8 * C) % (8 * C); // afstand tot de dichtstbijzijnde kruising
+      const m = (((t - C) % (8 * C)) + 8 * C) % (8 * C); // distance to the nearest intersection
       if (m < 3.6 || m > 8 * C - 3.6) continue;
       dm.compose(new THREE.Vector3(t, 0.035, k * 8 * C + C), rot, new THREE.Vector3(1, 1, 1)); dash.setMatrixAt(di++, dm);
       dm.compose(new THREE.Vector3(k * 8 * C + C, 0.035, t), rotV, new THREE.Vector3(1, 1, 1)); dash.setMatrixAt(di++, dm);
     }
     dash.count = di; root.add(dash);
 
-    // blokken & gebouwen
+    // blocks & buildings
     for (const b of world.blocks) this.buildBlock(b, root);
     for (const b of world.buildings) this.buildBuilding(b, root);
     this.buildLamps(root);
@@ -178,13 +178,13 @@ export class CityScene {
         break;
       }
       case 'farm': {
-        // kas: halve cilinder (de onderste helft verdwijnt in de grond)
+        // greenhouse: half cylinder (the lower half sinks into the ground)
         const ghg = new THREE.Group(); ghg.position.set(w / 2, 0, 4.2); g.add(ghg);
         const shell = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 17, 16, 1, true), new THREE.MeshPhysicalMaterial({ color: 0xcfeeff, transparent: true, opacity: 0.35, roughness: 0.1, side: THREE.DoubleSide, depthWrite: false }));
         shell.rotation.z = Math.PI / 2; ghg.add(shell);
         for (let i = -3; i <= 3; i++) this.box(0.15, 0.15, 5, 0x9aa5ad, i * 2.4, 2.55, 0, ghg);
         for (let i = -3; i <= 3; i++) this.box(1.2, 0.5, 4.2, 0x3c8a3a, i * 2.4, 0.5, 0, ghg);
-        // akker
+        // field
         for (let i = 0; i < 6; i++) this.box(w - 3, 0.35, 1.0, i % 2 ? 0x7ea43d : 0xb8a14a, w / 2, 0.3, 11 + i * 1.9, g);
         this.box(1.6, 1.3, 1.6, 0x8b5a3c, 3, 0.65, 9.6, g);
         break;
@@ -237,9 +237,9 @@ export class CityScene {
         break;
       }
     }
-    // gebouwlabels (alleen bijzondere gebouwen)
+    // building labels (special buildings only)
     if (b.type !== 'house' && b.type !== 'park') {
-      const names = { farm: '🌾 Kassen', workshop: '🔧 Werkplaats', hospital: '🏥 Ziekenhuis', depot: '📦 Distributiecentrum', gov: '🏛️ Stadhuis · AI-overheid' };
+      const names = { farm: '🌾 Greenhouses', workshop: '🔧 Workshop', hospital: '🏥 Hospital', depot: '📦 Distribution center', gov: '🏛️ City Hall · AI government' };
       this.label(names[b.type], x + w / 2, 11.5, z + d / 2, 'big').type = b.type;
     }
   }
@@ -260,7 +260,7 @@ export class CityScene {
       if (b.type === 'park') for (let i = 0; i < 18; i++) { const a = rnd() * 6.28, rr = 4 + rnd() * 7; spots.push([b.x * C + 6 * C / 2 + Math.cos(a) * rr, b.z * C + 6 * C / 2 + Math.sin(a) * rr, 1.3]); }
       else if (b.type === 'homes') for (let i = 0; i < 3; i++) spots.push([b.x * C + 5.8 + rnd() * 0.4, b.z * C + 5.8 + rnd() * 0.4, 0.8]);
     }
-    // bomen langs de randen van de stad
+    // trees along the edges of the city
     for (let i = 0; i < 60; i++) { const a = rnd() * 6.28, rr = 62 + rnd() * 50; spots.push([42 + Math.cos(a) * rr, 42 + Math.sin(a) * rr, 1.5 + rnd()]); }
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 1.6, 6), this.mat(0x5c4128), spots.length);
     const crown = new THREE.InstancedMesh(new THREE.ConeGeometry(1.1, 3, 7), this.mat(0x2f6b3a), spots.length);
@@ -272,7 +272,7 @@ export class CityScene {
     trunk.castShadow = crown.castShadow = true; root.add(trunk, crown);
   }
 
-  // ---- burgers ----------------------------------------------------------------
+  // ---- citizens ----------------------------------------------------------------
   makeCitizen(c) {
     const g = new THREE.Group(), r = rand(c.id * 13 + 1);
     const skin = SKIN[Math.floor(r() * SKIN.length)];
@@ -333,7 +333,7 @@ export class CityScene {
     return { g, rotors, beam, pkg, kind, x: 0, z: 0, y: 1, from: [0, 0], to: [0, 0], t0: 0, st: 0 };
   }
 
-  // ---- interactie --------------------------------------------------------------
+  // ---- interaction --------------------------------------------------------------
   pick(cx, cy) {
     this.ray.setFromCamera(new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1), this.camera);
     const hits = this.ray.intersectObjects([...this.citizens.values()].filter((o) => o.mode !== 4).map((o) => o.g), true);
@@ -353,7 +353,7 @@ export class CityScene {
   }
   resetCamera() { this.camera.position.set(-40, 62, 128); this.controls.target.set(42, 0, 42); this.follow = false; }
 
-  // ---- dag/nacht ----------------------------------------------------------------
+  // ---- day/night ----------------------------------------------------------------
   setTime(minutes) {
     this.hour = (minutes % 1440) / 60;
     const h = this.hour, ang = ((h - 6) / 24) * Math.PI * 2, elev = Math.sin(ang);
@@ -378,7 +378,7 @@ export class CityScene {
     this.isNight = night > 0.5;
   }
 
-  // ---- render-loop ----------------------------------------------------------------
+  // ---- render loop ----------------------------------------------------------------
   animate() {
     requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 0.1), t = this.clock.elapsedTime, now = performance.now();
@@ -418,9 +418,9 @@ export class CityScene {
     o.g.rotation.z = 0;
     if (!moving) {
       o.legL.rotation.x = o.legR.rotation.x = 0;
-      if (o.mode === 1) { o.armR.rotation.x = -1.2 + Math.sin(t * 7 + o.phase) * 0.7; o.armL.rotation.x = -0.4 + Math.sin(t * 7 + o.phase + 1.5) * 0.3; }       // werken: hameren
-      else if (o.mode === 2) { o.armR.rotation.x = -1.7 + Math.sin(t * 5 + o.phase) * 0.25; o.armL.rotation.x = 0; o.body.position.y += Math.sin(t * 5 + o.phase) * 0.015; } // eten
-      else if (o.mode === 3) { o.g.rotation.z = Math.sin(t * 2 + o.phase) * 0.12; o.armL.rotation.x = o.armR.rotation.x = 0.3; o.body.position.y -= 0.05; }          // wankelen
+      if (o.mode === 1) { o.armR.rotation.x = -1.2 + Math.sin(t * 7 + o.phase) * 0.7; o.armL.rotation.x = -0.4 + Math.sin(t * 7 + o.phase + 1.5) * 0.3; }       // working: hammering
+      else if (o.mode === 2) { o.armR.rotation.x = -1.7 + Math.sin(t * 5 + o.phase) * 0.25; o.armL.rotation.x = 0; o.body.position.y += Math.sin(t * 5 + o.phase) * 0.015; } // eating
+      else if (o.mode === 3) { o.g.rotation.z = Math.sin(t * 2 + o.phase) * 0.12; o.armL.rotation.x = o.armR.rotation.x = 0.3; o.body.position.y -= 0.05; }          // staggering
       else { o.armL.rotation.x = o.armR.rotation.x = Math.sin(t * 1.5 + o.phase) * 0.05; }
     }
   }
@@ -449,7 +449,7 @@ export class CityScene {
       l.el.style.display = vis ? 'block' : 'none';
       if (vis) l.el.style.transform = `translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px) translate(-50%,-100%)`;
     }
-    // naamlabel voor hover/selected
+    // name label for hover/selected
     const show = [this.selected, this.hovered].filter((x, i, a) => x != null && a.indexOf(x) === i);
     this.nameLabels ??= new Map();
     for (const [id, el] of this.nameLabels) if (!show.includes(id)) { el.remove(); this.nameLabels.delete(id); }

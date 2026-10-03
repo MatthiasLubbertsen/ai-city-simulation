@@ -1,4 +1,4 @@
-// Kleine seedbare PRNG (mulberry32) met opslaanbare state, zodat de simulatie reproduceerbaar blijft na een herstart.
+// Small seedable PRNG (mulberry32) with saveable state, so the simulation stays reproducible after a restart.
 export function makeRng(seed) {
   let s = seed >>> 0;
   const f = () => {

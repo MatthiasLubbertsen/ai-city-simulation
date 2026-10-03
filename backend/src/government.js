@@ -1,5 +1,5 @@
-// De centrale AI-overheid: telt alles, verdeelt eten (buiksensor), herverdeelt spullen, regelt werk en productie.
-// Geen geld: ruilwaarde = arbeidsuren (item.weight). Elk besluit wordt met reden bewaard.
+// The central AI government: counts everything, distributes food (belly sensor), redistributes goods, manages jobs and production.
+// No money: trade value = labour-hours (item.weight). Every decision is stored with its reasoning.
 import { ITEMS, ITEM_BY_ID, itemName, weightOf, countOf, fmtItems, addItem } from './items.js';
 import { declaredInv, declaredWeight, pickGive, HUNGER_PER_DAY, jobName } from './citizen.js';
 
@@ -19,16 +19,16 @@ export class Government {
     this.policies = {
       rationCap: 1.2,
       tolerance: 0.12,
-      jobTargets: null, // wordt bij init gezet
+      jobTargets: null, // set at init
       plan: [], // [{item, qty}]
       restIds: [],
       announcement: '',
     };
     this.depot = { food: 0, items: {}, labor: 0, medicine: 0 };
-    this.demand = {};       // item -> aantal onvervulde wensen
-    this.harvest = 1;       // oogstfactor (weer)
+    this.demand = {};       // item -> number of unfulfilled wishes
+    this.harvest = 1;       // harvest factor (weather)
     this.lastDecision = null;
-    this.decisions = [];    // laatste beslissingen (UI)
+    this.decisions = [];    // latest decisions (UI)
     this.counters = { fraud: 0, rations: 0, kcalServed: 0, produced: 0, trades: 0, rebalances: 0, subsidies: 0, audits: 0, confiscated: 0, foodProduced: 0 };
     this.lastRebalanceDay = -1;
     this.lastEmergencyCheck = 0;
@@ -42,7 +42,7 @@ export class Government {
   get dailyNeed() { return this.alive.reduce((s, c) => s + c.traits.appetite, 0) || 1; }
   get foodDays() { return this.depot.food / this.dailyNeed; }
 
-  // ---- productie -----------------------------------------------------------
+  // ---- production -----------------------------------------------------------
   produce(c, hrs) {
     const d = this.depot, k = c.traits.skill;
     if (c.job === 'farmer') { const v = 900 * hrs * k * this.harvest; d.food += v; this.counters.foodProduced += v; return v; }
@@ -56,7 +56,7 @@ export class Government {
     for (let guard = 0; guard < 5; guard++) {
       let entry = this.policies.plan.find((p) => p.qty > 0 && ITEM_BY_ID[p.item]);
       if (!entry) {
-        // standaard: maak wat het minst op voorraad is en het meest gewenst wordt
+        // default: make whatever is least in stock and most wanted
         const best = ITEMS.map((i) => ({ id: i.id, s: (this.demand[i.id] || 0) * 3 - (d.items[i.id] || 0) + (this.sim.rng() * 0.5) })).sort((a, b) => b.s - a.s)[0];
         entry = { item: best.id, qty: 1 };
         this.policies.plan.push(entry);
@@ -66,36 +66,36 @@ export class Government {
       d.labor -= w; entry.qty--;
       addItem(d.items, entry.item);
       this.counters.produced++;
-      this.sim.log('produce', `Werkplaats maakte: ${itemName(entry.item)} (${w} arbeidsuren). Voorraad: ${d.items[entry.item]}.`, null, { item: entry.item });
+      this.sim.log('produce', `Workshop made: ${itemName(entry.item)} (${w} labour-hours). Stock: ${d.items[entry.item]}.`, null, { item: entry.item });
       this.policies.plan = this.policies.plan.filter((p) => p.qty > 0);
     }
   }
 
-  // ---- eten (buiksensor) ---------------------------------------------------
+  // ---- eating (belly sensor) ---------------------------------------------------
   issueRation(c) {
     const need = c.traits.appetite;
-    const sensor = Math.max(0, ((c.hunger - 5) / HUNGER_PER_DAY) * need); // wat de sensor op je buik meet
+    const sensor = Math.max(0, ((c.hunger - 5) / HUNGER_PER_DAY) * need); // what the sensor on your belly measures
     let mult = clamp(c.rationPref, 1, this.policies.rationCap);
     const days = this.foodDays;
     if (days < 1.5) mult = 1;
-    if (days < 0.6) mult = 0.8; // schaarste: iedereen krijgt wat minder
+    if (days < 0.6) mult = 0.8; // scarcity: everyone gets a bit less
     let kcal = sensor * mult;
     if (c.hunger >= 75) kcal = Math.max(kcal, need * 0.35);
     kcal = Math.min(kcal, this.depot.food);
     if (kcal < 1) return { kcal: 0 };
     this.depot.food -= kcal;
     this.counters.rations++; this.counters.kcalServed += kcal;
-    this.sim.log('ration', `${c.name} krijgt ${Math.round(kcal)} kcal (sensor ${Math.round(sensor)}${mult !== 1 ? `, ×${mult.toFixed(2)}` : ''}). Depot: ${Math.round(this.depot.food)} kcal.`, c.id,
+    this.sim.log('ration', `${c.name} receives ${Math.round(kcal)} kcal (sensor ${Math.round(sensor)}${mult !== 1 ? `, ×${mult.toFixed(2)}` : ''}). Depot: ${Math.round(this.depot.food)} kcal.`, c.id,
       { kcal: Math.round(kcal), sensor: Math.round(sensor), mult: +mult.toFixed(2), hunger: +c.hunger.toFixed(1), depot: Math.round(this.depot.food) });
     return { kcal, sensor, mult };
   }
 
-  // ---- ruilen & herverdelen ------------------------------------------------
+  // ---- trading & redistribution ------------------------------------------------
   processVisit(c) {
     const sim = this.sim, d = this.depot;
     const orders = c.orders.splice(0);
     for (const o of orders) {
-      // 1. inleveren (surplus)
+      // 1. hand in (surplus)
       let gaveW = 0;
       const given = [];
       for (const id of o.surrender || []) {
@@ -103,10 +103,10 @@ export class Government {
       }
       if (given.length) {
         sim.store.trade(sim.tick, sim.minutes | 0, c.id, 'surrender', '', JSON.stringify(given), 0, gaveW);
-        sim.log('rebalance_give', `${c.name} levert in voor herverdeling: ${fmtItems(count(given))} (${gaveW} uur).`, c.id, { items: given, weight: gaveW });
-        sim.remember(c, 'rebalance', `De overheid vroeg mij ${fmtItems(count(given))} in te leveren omdat ik boven het gemiddelde zat.`, 0.6);
+        sim.log('rebalance_give', `${c.name} hands in for redistribution: ${fmtItems(count(given))} (${gaveW} h).`, c.id, { items: given, weight: gaveW });
+        sim.remember(c, 'rebalance', `The government asked me to hand in ${fmtItems(count(given))} because I was above average.`, 0.6);
       }
-      // 2. ontvangen (tekort)
+      // 2. receive (shortfall)
       if (o.receiveWeight > 0) {
         let budget = o.receiveWeight;
         const got = [];
@@ -117,8 +117,8 @@ export class Government {
         if (got.length) {
           const w = got.reduce((s, id) => s + ITEM_BY_ID[id].weight, 0);
           sim.store.trade(sim.tick, sim.minutes | 0, c.id, 'receive', JSON.stringify(got), '', w, 0);
-          sim.log('rebalance_get', `${c.name} ontvangt uit het depot: ${fmtItems(count(got))} (${w} uur) omdat hij/zij onder het gemiddelde zat.`, c.id, { items: got, weight: w });
-          sim.remember(c, 'rebalance', `Ik kreeg ${fmtItems(count(got))} van de overheid; ik zat onder het gemiddelde.`, 0.6);
+          sim.log('rebalance_get', `${c.name} receives from the depot: ${fmtItems(count(got))} (${w} h) because they were below average.`, c.id, { items: got, weight: w });
+          sim.remember(c, 'rebalance', `I received ${fmtItems(count(got))} from the government; I was below average.`, 0.6);
         }
       }
     }
@@ -133,15 +133,15 @@ export class Government {
       this.demand[it.id] = (this.demand[it.id] || 0) + (w.counted ? 0 : 1);
       w.counted = true;
       w.tries = (w.tries || 0) + 1;
-      sim.log('trade_denied', `${c.name} wil ${it.name}, maar het depot heeft er geen. Aanvraag genoteerd.`, c.id, { item: it.id, reason: 'no_stock' });
-      sim.remember(c, 'trade', `Ik wilde een ${it.name}, maar er is er geen. Ik moet wachten.`, 0.4);
+      sim.log('trade_denied', `${c.name} wants ${it.name}, but the depot has none. Request noted.`, c.id, { item: it.id, reason: 'no_stock' });
+      sim.remember(c, 'trade', `I wanted a ${it.name}, but there are none. I'll have to wait.`, 0.4);
       if (w.tries >= 3) c.wantReq = null;
       return;
     }
     const give = pickGive(c, it.weight, w.give || []);
     if (!give) {
-      sim.log('trade_denied', `${c.name} wil ${it.name} (${it.weight} uur) maar heeft niet genoeg om in te leveren.`, c.id, { item: it.id, reason: 'not_enough' });
-      sim.remember(c, 'trade', `Ik wilde een ${it.name}, maar ik heb niet genoeg spullen om in te leveren.`, 0.4);
+      sim.log('trade_denied', `${c.name} wants ${it.name} (${it.weight} h) but does not have enough to hand in.`, c.id, { item: it.id, reason: 'not_enough' });
+      sim.remember(c, 'trade', `I wanted a ${it.name}, but I don't have enough belongings to trade.`, 0.4);
       c.wantReq = null;
       return;
     }
@@ -149,17 +149,17 @@ export class Government {
     addItem(d.items, it.id, -1); addItem(c.inv, it.id);
     this.counters.trades++; c.stats.trades++;
     sim.store.trade(sim.tick, sim.minutes | 0, c.id, 'swap', JSON.stringify([it.id]), JSON.stringify(give.items), it.weight, give.weight);
-    sim.log('trade', `${c.name} ruilt: levert in ${fmtItems(count(give.items))} (${give.weight} uur) en krijgt ${it.name} (${it.weight} uur).`, c.id,
+    sim.log('trade', `${c.name} trades: hands in ${fmtItems(count(give.items))} (${give.weight} h) and receives ${it.name} (${it.weight} h).`, c.id,
       { got: it.id, gave: give.items, weightIn: it.weight, weightOut: give.weight });
-    sim.remember(c, 'trade', `Ik ruilde ${fmtItems(count(give.items))} tegen ${it.name}.`, 0.7);
+    sim.remember(c, 'trade', `I traded ${fmtItems(count(give.items))} for ${it.name}.`, 0.7);
     c.wantReq = null; c.lastTradeDay = sim.day();
   }
 
-  rebalance(reason = 'dagelijks') {
+  rebalance(reason = 'daily') {
     const sim = this.sim, alive = this.alive;
     if (alive.length < 2) return;
     const W = new Map(alive.map((c) => [c.id, declaredWeight(c)]));
-    // het depot telt deels mee: groeiende productie komt zo bij de burgers terecht
+    // the depot counts partly: growing production thus ends up with the citizens
     const depotW = weightOf(this.depot.items);
     const avg = ([...W.values()].reduce((s, x) => s + x, 0) + 0.5 * depotW) / alive.length;
     const tol = Math.max(3, avg * this.policies.tolerance);
@@ -183,27 +183,27 @@ export class Government {
       }
     }
     this.counters.rebalances++;
-    sim.log('rebalance', `Herverdeling (${reason}): gemiddelde bezit ${avg.toFixed(1)} arbeidsuren/persoon. ${givers} burgers moeten inleveren, ${getters} krijgen bij.`, null, { avg: +avg.toFixed(2), tol: +tol.toFixed(2), givers, getters });
+    sim.log('rebalance', `Redistribution (${reason}): average holdings ${avg.toFixed(1)} labour-hours/person. ${givers} citizens must hand in, ${getters} receive.`, null, { avg: +avg.toFixed(2), tol: +tol.toFixed(2), givers, getters });
   }
 
-  // ---- dagelijkse routines -------------------------------------------------
+  // ---- daily routines -------------------------------------------------
   census() {
     const sim = this.sim;
     if (!this.alive.length) return;
     let total = 0, hiddenTotal = 0;
     for (const c of this.alive) {
       const decl = declaredInv(c);
-      // Oneerlijke burgers houden af en toe iets achter
+      // Dishonest citizens occasionally hold something back
       if (c.traits.honesty < 0.3 && sim.rng() < 0.5) {
         const ids = Object.keys(c.inv).filter((id) => (c.inv[id] - (c.hidden[id] || 0)) > 0);
         if (ids.length) { const id = sim.rng.pick(ids); c.hidden[id] = (c.hidden[id] || 0) + 1; delete decl[id]; if (c.inv[id] - c.hidden[id] > 0) decl[id] = c.inv[id] - c.hidden[id]; }
       }
       total += weightOf(decl);
       hiddenTotal += weightOf(c.hidden);
-      sim.log('census', `${c.name} geeft op: ${fmtItems(decl)} (${weightOf(decl)} uur).`, c.id, { inv: decl, weight: weightOf(decl) });
+      sim.log('census', `${c.name} declares: ${fmtItems(decl)} (${weightOf(decl)} h).`, c.id, { inv: decl, weight: weightOf(decl) });
     }
-    sim.log('census_total', `Volkstelling: totaal ${total} arbeidsuren aan bezit bij ${this.alive.length} burgers, gemiddeld ${(total / this.alive.length).toFixed(1)}.`, null, { total });
-    // Steekproef: een drone controleert één woning
+    sim.log('census_total', `Census: total ${total} labour-hours of holdings across ${this.alive.length} citizens, average ${(total / this.alive.length).toFixed(1)}.`, null, { total });
+    // Spot check: a drone inspects one home
     const sus = this.alive.filter((c) => weightOf(c.hidden) > 0);
     const target = sus.length && sim.rng() < 0.7 ? sim.rng.pick(sus) : sim.rng.pick(this.alive);
     this.counters.audits++;
@@ -212,28 +212,28 @@ export class Government {
       for (const [id, n] of Object.entries(target.hidden)) { addItem(target.inv, id, -n); addItem(this.depot.items, id, n); }
       const txt = fmtItems(target.hidden);
       target.hidden = {}; target.fraudStrikes++; this.counters.fraud++; this.counters.confiscated += hid;
-      sim.log('audit_fraud', `Steekproef bij ${target.name}: niet opgegeven spullen gevonden (${txt}). In beslag genomen.`, target.id, { weight: hid });
-      sim.remember(target, 'fraud', `Ik werd betrapt op niet opgegeven spullen (${txt}). Alles is in beslag genomen.`, 0.9);
-    } else sim.log('audit_ok', `Steekproef bij ${target.name}: alles klopte.`, target.id);
+      sim.log('audit_fraud', `Spot check at ${target.name}: undeclared goods found (${txt}). Confiscated.`, target.id, { weight: hid });
+      sim.remember(target, 'fraud', `I was caught with undeclared goods (${txt}). Everything was confiscated.`, 0.9);
+    } else sim.log('audit_ok', `Spot check at ${target.name}: everything checked out.`, target.id);
   }
 
   dailyEconomy() {
     const sim = this.sim;
     this.harvest = clamp(this.harvest + (sim.rng() - 0.5) * 0.35, 0.55, 1.25);
-    // spontane wensen (de LLM-laag doet dit rijker als die beschikbaar is)
+    // spontaneous wishes (the LLM layer does this more richly when available)
     const p = sim.mind.llmReady() ? 0.06 : 0.2;
     for (const c of this.alive) {
       if (!c.wantReq && sim.rng() < p) {
         const it = sim.rng.pick(ITEMS.filter((i) => (c.inv[i.id] || 0) < 2));
         c.wantReq = { item: it.id, give: null, since: sim.day() };
-        sim.remember(c, 'want', `Ik zou graag een ${it.name} willen hebben.`, 0.3);
+        sim.remember(c, 'want', `I would love to have a ${it.name}.`, 0.3);
       }
       if (c.wantReq && sim.day() - (c.wantReq.since ?? 0) > 4) c.wantReq = null;
     }
     this.census();
   }
 
-  // ---- besluitvorming ------------------------------------------------------
+  // ---- decision making ------------------------------------------------------
   stats() {
     const sim = this.sim, al = this.alive;
     const n = al.length || 1;
@@ -265,18 +265,18 @@ export class Government {
     return s.starving > 0 || s.foodDays < 2 || s.sick > s.population * 0.2 || (s.medicine < 2 && s.sick > 0);
   }
 
-  // Elke 30 sim-minuten: noodhulp-controle (altijd regel-gebaseerd, geen LLM nodig) en beslismomenten.
+  // Every 30 sim-minutes: emergency aid check (always rule-based, no LLM needed) and decision moments.
   update(dtMin) {
     const sim = this.sim;
     if (sim.minutes - this.lastEmergencyCheck >= 30) {
       this.lastEmergencyCheck = sim.minutes;
       for (const c of this.alive) {
-        if (c.hunger >= 80 && !c.foodDrone && this.depot.food > 800 && c.task?.kind !== 'eat') this.emergencyFood(c, 'regels');
+        if (c.hunger >= 80 && !c.foodDrone && this.depot.food > 800 && c.task?.kind !== 'eat') this.emergencyFood(c, 'rules');
       }
     }
-    // dagelijks 17:00 herverdelen, na de volkstelling van middernacht
-    if (sim.hour() >= 15 && this.lastRebalanceDay !== sim.day()) { this.lastRebalanceDay = sim.day(); this.rebalance('dagelijks'); }
-    const s = null; // beslissingen worden door mind.js aangestuurd (async)
+    // redistribute daily at 17:00, after the midnight census
+    if (sim.hour() >= 15 && this.lastRebalanceDay !== sim.day()) { this.lastRebalanceDay = sim.day(); this.rebalance('daily'); }
+    const s = null; // decisions are driven by mind.js (async)
     return s;
   }
 
@@ -287,11 +287,11 @@ export class Government {
     c.foodDrone = true;
     this.counters.subsidies++;
     this.sim.health.dispatchFood(c, kcal);
-    this.sim.log('subsidy', `Nood-subsidie: drone met ${Math.round(kcal)} kcal onderweg naar ${c.name} (honger ${Math.round(c.hunger)}, besloten door ${by}).`, c.id, { kcal: Math.round(kcal), by });
-    this.sim.remember(c, 'subsidy', `Ik was bijna uitgehongerd. De overheid stuurde een drone met voedsel.`, 0.9);
+    this.sim.log('subsidy', `Emergency subsidy: drone with ${Math.round(kcal)} kcal on its way to ${c.name} (hunger ${Math.round(c.hunger)}, decided by ${by}).`, c.id, { kcal: Math.round(kcal), by });
+    this.sim.remember(c, 'subsidy', `I was nearly starving. The government sent a drone with food.`, 0.9);
   }
 
-  // Past een (gevalideerde) beslissing toe, afkomstig van de LLM of van de regels.
+  // Applies a (validated) decision, coming from the LLM or from the rules.
   apply(d, source) {
     const sim = this.sim, pol = this.policies;
     if (typeof d.ration_cap === 'number') pol.rationCap = clamp(d.ration_cap, 1, 1.3);
@@ -313,16 +313,16 @@ export class Government {
     if (Array.isArray(d.rest)) {
       for (const c of this.sim.citizens) c.rest = false;
       pol.restIds = d.rest.map(Number).filter((id) => sim.byId.get(id) && !sim.byId.get(id).dead).slice(0, 12);
-      for (const id of pol.restIds) { const c = sim.byId.get(id); c.rest = true; sim.log('order_rest', `Bevel: ${c.name} moet rusten (energie ${Math.round(c.energy)}).`, c.id, { by: source }); sim.remember(c, 'order', 'De overheid beval mij te rusten.', 0.5); }
+      for (const id of pol.restIds) { const c = sim.byId.get(id); c.rest = true; sim.log('order_rest', `Order: ${c.name} must rest (energy ${Math.round(c.energy)}).`, c.id, { by: source }); sim.remember(c, 'order', 'The government ordered me to rest.', 0.5); }
     }
     if (Array.isArray(d.emergency_food)) {
       for (const id of d.emergency_food.map(Number).slice(0, 8)) { const c = sim.byId.get(id); if (c && !c.dead && !c.foodDrone) this.emergencyFood(c, source); }
     }
-    if (d.rebalance_now) this.rebalance('op bevel');
+    if (d.rebalance_now) this.rebalance('on order');
     if (typeof d.announcement === 'string' && d.announcement.trim()) {
       pol.announcement = d.announcement.trim().slice(0, 200);
-      sim.log('announcement', `📢 Overheid: ${pol.announcement}`, null, { by: source });
-      for (const c of this.alive) if (sim.rng() < 0.25) sim.remember(c, 'announcement', `Omroep: ${pol.announcement}`, 0.3);
+      sim.log('announcement', `📢 Government: ${pol.announcement}`, null, { by: source });
+      for (const c of this.alive) if (sim.rng() < 0.25) sim.remember(c, 'announcement', `Broadcast: ${pol.announcement}`, 0.3);
     }
   }
 
@@ -339,8 +339,8 @@ export class Government {
       if (!over || !under) break;
       const c = al.filter((x) => x.job === over && x.task?.kind !== 'work').sort((a, b) => b.traits.skill - a.traits.skill)[0] || al.find((x) => x.job === over);
       if (!c) break;
-      sim.log('job_change', `${c.name} gaat van ${jobName(over)} naar ${jobName(under)} (herplaatsing door overheid).`, c.id, { from: over, to: under });
-      sim.remember(c, 'job', `De overheid verplaatste mij van ${jobName(over)} naar ${jobName(under)}.`, 0.6);
+      sim.log('job_change', `${c.name} moves from ${jobName(over)} to ${jobName(under)} (reassigned by the government).`, c.id, { from: over, to: under });
+      sim.remember(c, 'job', `The government moved me from ${jobName(over)} to ${jobName(under)}.`, 0.6);
       c.job = under; moved++;
     }
   }

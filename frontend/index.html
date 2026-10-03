@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="nl">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI City — een stad zonder geld</title>
+  <title>AI City — a city without money</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏙️</text></svg>" />
 </head>
 <body>
@@ -11,21 +11,21 @@
   <div id="labels"></div>
 
   <header id="top">
-    <div class="brand"><span class="logo">🏙️</span><div><b>AI City</b><small>een stad zonder geld, bestuurd door een AI</small></div></div>
-    <div class="clock" id="clock"><span id="clock-ico">☀️</span><b id="clock-time">--:--</b><small id="clock-day">dag –</small></div>
+    <div class="brand"><span class="logo">🏙️</span><div><b>AI City</b><small>a city without money, run by an AI</small></div></div>
+    <div class="clock" id="clock"><span id="clock-ico">☀️</span><b id="clock-time">--:--</b><small id="clock-day">day –</small></div>
     <div class="kpis" id="kpis"></div>
     <div class="top-actions">
-      <button id="btn-left" class="icon" title="Overheid & statistieken">🏛️</button>
-      <button id="btn-orbit" class="icon" title="Automatisch draaien">🎥</button>
-      <button id="btn-reset" class="icon" title="Camera resetten">🧭</button>
-      <button id="btn-right" class="icon" title="Burgers">👥</button>
+      <button id="btn-left" class="icon" title="Government & statistics">🏛️</button>
+      <button id="btn-orbit" class="icon" title="Auto-rotate">🎥</button>
+      <button id="btn-reset" class="icon" title="Reset camera">🧭</button>
+      <button id="btn-right" class="icon" title="Citizens">👥</button>
     </div>
   </header>
 
   <aside id="left" class="panel">
     <section>
-      <h3>🏛️ Overheid <span id="gov-badge" class="badge"></span></h3>
-      <div id="gov-analysis" class="muted">Wachten op het eerste besluit…</div>
+      <h3>🏛️ Government <span id="gov-badge" class="badge"></span></h3>
+      <div id="gov-analysis" class="muted">Waiting for the first decision…</div>
       <div id="gov-policy" class="chips"></div>
       <div id="gov-announce"></div>
     </section>
@@ -35,20 +35,20 @@
     </section>
     <section>
       <div class="tabs" id="chart-tabs">
-        <button data-c="hunger" class="on">Honger</button><button data-c="food">Voedsel</button><button data-c="equality">Gelijkheid</button><button data-c="health">Zorg</button>
+        <button data-c="hunger" class="on">Hunger</button><button data-c="food">Food</button><button data-c="equality">Equality</button><button data-c="health">Health</button>
       </div>
       <div class="chart-wrap"><canvas id="chart"></canvas></div>
     </section>
     <section>
-      <h3>🧠 AI-motor</h3>
+      <h3>🧠 Jev engine</h3>
       <div id="llm"></div>
     </section>
     <section>
-      <h3>Legenda</h3>
+      <h3>Legend</h3>
       <div class="legend">
-        <span><i style="background:#3b82f6"></i>Idle</span><span><i style="background:#f59e0b"></i>Werkt</span>
-        <span><i style="background:#22c55e"></i>Eet</span><span><i style="background:#ef4444"></i>Hongerig</span>
-        <span><i style="background:#8b95a5"></i>Overleden</span><span>🟣 ziek</span>
+        <span><i style="background:#3b82f6"></i>Idle</span><span><i style="background:#f59e0b"></i>Working</span>
+        <span><i style="background:#22c55e"></i>Eating</span><span><i style="background:#ef4444"></i>Hungry</span>
+        <span><i style="background:#8b95a5"></i>Deceased</span><span>🟣 sick</span>
       </div>
     </section>
   </aside>
@@ -56,21 +56,21 @@
   <aside id="right" class="panel">
     <div id="inspector" hidden></div>
     <div id="citizen-list">
-      <h3>👥 Burgers <span id="pop-count" class="badge"></span></h3>
-      <input id="search" placeholder="Zoek op naam of beroep…" />
+      <h3>👥 Citizens <span id="pop-count" class="badge"></span></h3>
+      <input id="search" placeholder="Search by name or job…" />
       <div id="list"></div>
     </div>
   </aside>
 
   <footer id="feed-wrap">
     <div class="feed-head">
-      <b>Live logboek</b>
+      <b>Live log</b>
       <div id="filters" class="chips"></div>
     </div>
     <div id="feed"></div>
   </footer>
 
-  <div id="loading"><div class="spinner"></div><p>Verbinden met de stad…</p></div>
+  <div id="loading"><div class="spinner"></div><p>Connecting to the city…</p></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

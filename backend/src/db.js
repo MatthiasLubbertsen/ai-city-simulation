@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Alles wordt bewaard: elk event, elke beweging, elke herinnering, elke overheidsbeslissing, elke LLM-call.
+// Everything is kept: every event, movement, memory, government decision and LLM call.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY, ts INTEGER, tick INTEGER, minute INTEGER, type TEXT, actor INTEGER, target INTEGER, text TEXT, data TEXT);
@@ -46,7 +46,7 @@ export function openStore(dir) {
     snap: db.prepare('INSERT INTO snapshot(id,tick,data) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET tick=excluded.tick, data=excluded.data'),
   };
 
-  // Schrijven gebeurt in batches (1x per seconde) in één transactie.
+  // Writes are batched (once per second) in a single transaction.
   let queue = [];
   const q = (fn) => queue.push(fn);
   const flush = db.transaction((items) => { for (const f of items) f(); });
